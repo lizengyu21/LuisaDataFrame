@@ -1,0 +1,1 @@
+luisa_dataframe_add_executable(test test.cpp)

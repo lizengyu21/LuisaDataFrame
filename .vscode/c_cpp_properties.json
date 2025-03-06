@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/include/ludf",
+                "${workspaceFolder}/include/ludf/**",
+                "${workspaceFolder}/ext/LuisaCompute/include/luisa/**",
+                "${workspaceFolder}/ext/LuisaCompute/include/luisa/backends/ext/cuda/lcub/",
+                "/usr/local/include/**",
+                "/usr/local/cuda-12.4/targets/x86_64-linux/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "gnu++20",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compileCommands": [
+                "${workspaceFolder}/build/compile_commands.json"
+            ]
+        }
+    ],
+    "version": 4
+}
