@@ -45,6 +45,9 @@ private:
         reset_shader = device.compile<1>([](BufferVar<T> counter) {
             counter.write(dispatch_x(), cast<T>(0));
         });
+        set_shader = device.compile<1>([](BufferVar<T> counter, Var<T> value) {
+            counter.write(dispatch_x(), value);
+        });
         copy_shader = device.compile<1>([](BufferVar<T> dst, BufferVar<T> src) {
             auto x = dispatch_x();
             dst.write(x, src.read(x));
@@ -113,12 +116,34 @@ private:
 
         #undef CREATE_REINEDX_SHADER
 
+
+
+        // #define CREATE_AGG_SHADER(TYPE, type) \
+        //     if (aggregate_shader_map.find(TYPE) == aggregate_shader_map.end()) \
+        //         aggregate_shader_map[TYPE] = device.compile<1>([](BufferVar<T> data, BufferVar<T> result, BufferUInt indices, UInt size, Var<T> init_value){ \
+        //             auto x = dispatch_x(); \
+        //             result.atomic(indices.read(x)).fetch_##type(data.read(x)); \
+        //         })
         #define CREATE_AGG_SHADER(TYPE, type) \
             if (aggregate_shader_map.find(TYPE) == aggregate_shader_map.end()) \
-                aggregate_shader_map[TYPE] = device.compile<1>([&](BufferVar<T> data, BufferVar<T> result, BufferUInt indices){ \
+                aggregate_shader_map[TYPE] = device.compile<1>([](BufferVar<T> data, BufferVar<T> result, BufferUInt indices, UInt size, Var<T> init_value){ \
+                    Shared<T> block_sum{block_size_x()}; \
+                    Shared<uint> block_start_index{1u}; \
+                    Shared<uint> block_end_index{1u}; \
                     auto x = dispatch_x(); \
-                    result.atomic(indices.read(x)).fetch_##type(data.read(x)); \
+                    block_sum.write(thread_x(), init_value); \
+                    $if (thread_x() == 0u) { block_start_index.write(0u, indices.read(x)); }; \
+                    $if (thread_x() == block_size_x() - 1u | x == size - 1u) { block_end_index.write(0u, indices.read(x)); }; \
+                    sync_block(); \
+                    auto block_sum_id = indices.read(x) - block_start_index.read(0u); \
+                    block_sum.atomic(block_sum_id).fetch_##type(data.read(x)); \
+                    sync_block(); \
+                    $if (thread_x() + block_start_index.read(0u) <= block_end_index.read(0u)) { \
+                        result.atomic(thread_x() + block_start_index.read(0u)).fetch_##type(block_sum.read(thread_x())); \
+                    }; \
                 })
+
+
         CREATE_AGG_SHADER(AggeragateOp::SUM, add);
         CREATE_AGG_SHADER(AggeragateOp::MEAN, add);
         CREATE_AGG_SHADER(AggeragateOp::MAX, max);
@@ -126,7 +151,22 @@ private:
 
         #undef CREATE_AGG_SHADER
 
+        // test_shader = device.compile<1>([](BufferVar<T> data, BufferVar<T> result, BufferUInt indices, UInt size){
+        //     Shared<T> block_sum{block_size_x()};
+        //     Shared<uint> block_start_index{1u};
+        //     Shared<uint> block_end_index{1u};
 
+        //     auto x = dispatch_x();
+        //     $if (thread_x() == 0u) { block_start_index.write(0u, indices.read(x)); };
+        //     $if (thread_x() == block_size_x() - 1u | x == size - 1u) { block_end_index.write(0u, indices.read(x)); };
+        //     sync_block();
+        //     auto block_sum_id = indices.read(x) - block_start_index.read(0u);
+        //     block_sum.atomic(block_sum_id).fetch_add(data.read(x));
+        //     sync_block();
+        //     $if (thread_x() + block_start_index.read(0u) <= block_end_index.read(0u)) {
+        //         result.atomic(thread_x() + block_start_index.read(0u)).fetch_add(block_sum.read(thread_x()));
+        //     };
+        // });
 
     }
 
@@ -134,17 +174,19 @@ private:
 public:
 
     luisa::compute::Shader1D<luisa::compute::Buffer<T>> reset_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, T> set_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> copy_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex> reindex_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex> inverse_reindex_shader;
     luisa::unordered_map<FilterOp, luisa::compute::Shader1D<BufferIndex, luisa::compute::Buffer<uint>, luisa::compute::Buffer<T>, T>> make_inverse_reindex_shader_map;
-    luisa::unordered_map<AggeragateOp, luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex>> aggregate_shader_map;
+    luisa::unordered_map<AggeragateOp, luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex, uint, T>> aggregate_shader_map;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>> arange_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, BufferIndex> adjacent_diff_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint>, BufferIndex> aggregate_count_shader;
     luisa::compute::Shader1D<BufferIndex, BufferIndex, BufferIndex> adjacent_diff_index_shader;
     luisa::compute::Shader1D<BufferIndex, BufferIndex> unique_count_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, BufferIndex, luisa::compute::Buffer<float>> sum_to_mean_shader;
+    // luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex, uint> test_shader;
 
 
     static ShaderCollector *get_instance(luisa::compute::Device &device) {

@@ -102,7 +102,7 @@ public:
             for (const auto &agg_op : it->second) {
                 string new_col_name = agg_op_string(agg_op) + "(" + current_col_name + ")";
 
-                auto res_col = type_dispatcher(current_col_type, aggregate_column{}, _device, _stream, current_col, agg_op, inclusive_sum_result, num_group);
+                auto res_col = type_dispatcher(current_col_type, aggregate_column{}, _device, _stream, current_col, agg_op, adjacent_diff_result, inclusive_sum_result, num_group);
 
                 if (each_group_count.size() == 0 && (agg_op == AggeragateOp::MEAN || agg_op == AggeragateOp::COUNT)) {
                     each_group_count = unique_count(_device, _stream, adjacent_diff_result, inclusive_sum_result, num_group);

@@ -68,23 +68,23 @@ int main(int argc, char *argv[]) {
     table.create_column("id", TypeId::INT32);
     table.append_column("id", id_vec);
 
-    auto opnprc_vec = createRandomVector<float>(size, 0.0, 100, seed + 20);
-    table.create_column("opnprc", TypeId::FLOAT32);
+    auto opnprc_vec = createRandomVector<int32_t>(size, 1, 1, seed + 20);
+    table.create_column("opnprc", TypeId::INT32);
     table.append_column("opnprc", opnprc_vec);
 
-    auto clsprc_vec = createRandomVector<float>(size, 0, 100, seed + 1);
+    auto clsprc_vec = createRandomVector<float>(size, -100, 100, seed + 1);
     table.create_column("clsprc", TypeId::FLOAT32);
     table.append_column("clsprc", clsprc_vec);
 
-    auto hiprc_vec = createRandomVector<float>(size, 0, 100, seed + 2);
+    auto hiprc_vec = createRandomVector<float>(size, -100, 100, seed + 2);
     table.create_column("hiprc", TypeId::FLOAT32);
     table.append_column("hiprc", hiprc_vec);
 
-    auto loprc_vec = createRandomVector<float>(size, 0, 100, seed + 3);
+    auto loprc_vec = createRandomVector<float>(size, -100, 100, seed + 3);
     table.create_column("loprc", TypeId::FLOAT32);
     table.append_column("loprc", loprc_vec);
 
-    auto trdvol_vec = createRandomVector<int32_t>(size, 0, 100, seed + 4);
+    auto trdvol_vec = createRandomVector<int32_t>(size, 0, 10000, seed + 4);
     table.create_column("trdvol", TypeId::UINT32);
     table.append_column("trdvol", trdvol_vec);
     // table.create_column("id", TypeId::INT32);
@@ -102,20 +102,20 @@ int main(int argc, char *argv[]) {
     auto agg_op_map = unordered_map<string, vector<AggeragateOp>>();
 
     agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    // agg_op_map.insert({"clsprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    // agg_op_map.insert({"hiprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    // agg_op_map.insert({"loprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    // agg_op_map.insert({"trdvol", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-
-    for (int i = 0; i < 100; ++i) {
+    agg_op_map.insert({"clsprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    agg_op_map.insert({"hiprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    agg_op_map.insert({"loprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    agg_op_map.insert({"trdvol", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    // agg_op_map.insert({"opnprc", {AggeragateOp::SUM}});
+    for (int i = 0; i < 20; ++i) {
         clock.tic();
-        int th = 100;
-        table.query().where("id", FilterOp::LESS, &th)->group_by("id", agg_op_map);
+        // int th = 100;
+        table.query().group_by("id", agg_op_map);
         LUISA_INFO("Time: {} ms", clock.toc());
     }
-    int th = 100;
+    // int th = 100;
     clock.tic();
-    table.where("id", FilterOp::LESS, &th)->group_by("id", agg_op_map);
+    table.group_by("id", agg_op_map);
     LUISA_INFO("Time: {} ms", clock.toc());
     table.print_table();
     

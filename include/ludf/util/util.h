@@ -154,7 +154,7 @@ struct adjacent_diff {
 
 struct aggregate_column {
     template <class T>
-    Column operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, const AggeragateOp &op, BufferIndex &indices, uint num_group) {
+    Column operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, const AggeragateOp &op, BufferIndex &adjacent_diff_result, BufferIndex &indices, uint num_group) {
         using namespace luisa;
         using namespace luisa::compute;
 
@@ -165,8 +165,11 @@ struct aggregate_column {
             return Column{TypeId::UINT32};
         } else {
             BufferBase res_buf = device.create_buffer<BaseType>(num_group * sizeof(T) / sizeof(BaseType));
-            stream << ShaderCollector<T>::get_instance(device)->reset_shader(res_buf.view().as<T>()).dispatch(num_group);
-            stream << ShaderCollector<T>::get_instance(device)->aggregate_shader_map[op](data_view, res_buf.view().as<T>(), indices).dispatch(indices.size());
+            T init_value = op == AggeragateOp::MAX ? std::numeric_limits<T>::lowest() : 
+                           op == AggeragateOp::MIN ? std::numeric_limits<T>::max() : static_cast<T>(0);
+                           
+            stream << ShaderCollector<T>::get_instance(device)->set_shader(res_buf.view().as<T>(), init_value).dispatch(num_group);
+            stream << ShaderCollector<T>::get_instance(device)->aggregate_shader_map[op](data_view, res_buf.view().as<T>(), indices, indices.size(), init_value).dispatch(indices.size());
             return Column{std::move(res_buf), data.dtype()};
         }
 
