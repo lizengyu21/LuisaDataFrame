@@ -83,6 +83,24 @@ private:
             auto x = dispatch_x();
             result.atomic(indices.read(x)).fetch_add(1u);
         });
+        adjacent_diff_index_shader = device.compile<1>([](BufferVar<uint> adjacent_diff_result, BufferVar<uint> indices, BufferVar<uint> result){
+            auto x = dispatch_x();
+            $if (adjacent_diff_result.read(x) == 1u) {
+                result.write(indices.read(x) - 1, x);
+            };
+        });
+        unique_count_shader = device.compile<1>([](BufferVar<uint> adjacent_diff_index_result, BufferVar<uint> result){
+            auto x = dispatch_x();
+            $if (x == 0u) {
+                result.write(0u, adjacent_diff_index_result.read(0u));
+            } $else {
+                result.write(x, adjacent_diff_index_result.read(x) - adjacent_diff_index_result.read(x - 1));
+            };
+        });
+        sum_to_mean_shader = device.compile<1>([](BufferVar<T> sum_data, BufferVar<uint> count_data, BufferVar<float> mean_data){
+            auto x = dispatch_x();
+            mean_data.write(x, cast<float>(sum_data.read(x)) / cast<float>(count_data.read(x)));
+        });
 
         #define CREATE_REINEDX_SHADER(TYPE, SYMBOL) create_make_reindex_shader(device, FilterOp::TYPE, [](Var<T> a, Var<T> b){ return a SYMBOL b; })
         
@@ -102,6 +120,7 @@ private:
                     result.atomic(indices.read(x)).fetch_##type(data.read(x)); \
                 })
         CREATE_AGG_SHADER(AggeragateOp::SUM, add);
+        CREATE_AGG_SHADER(AggeragateOp::MEAN, add);
         CREATE_AGG_SHADER(AggeragateOp::MAX, max);
         CREATE_AGG_SHADER(AggeragateOp::MIN, min);
 
@@ -123,6 +142,9 @@ public:
     luisa::compute::Shader1D<luisa::compute::Buffer<T>> arange_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, BufferIndex> adjacent_diff_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint>, BufferIndex> aggregate_count_shader;
+    luisa::compute::Shader1D<BufferIndex, BufferIndex, BufferIndex> adjacent_diff_index_shader;
+    luisa::compute::Shader1D<BufferIndex, BufferIndex> unique_count_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, BufferIndex, luisa::compute::Buffer<float>> sum_to_mean_shader;
 
 
     static ShaderCollector *get_instance(luisa::compute::Device &device) {

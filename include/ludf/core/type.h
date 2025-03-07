@@ -15,6 +15,7 @@ enum class TypeId {
     INT32,
     UINT32,
     FLOAT32,
+    TIMESTAMP,  // INT32,
     // INT64,
 };
 

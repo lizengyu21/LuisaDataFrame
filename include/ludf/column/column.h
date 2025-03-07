@@ -33,6 +33,10 @@ public:
         return _dtype;
     }
 
+    void set_dtype(DataType dtype) {
+        _dtype = dtype;
+    }
+
     Column clone(luisa::compute::Device &device, luisa::compute::Stream &stream) const {
         BufferBase t = device.create_buffer<BaseType>(_data.size());
         stream << t.copy_from(_data);
@@ -53,6 +57,11 @@ public:
 
     void load(BufferBase &&other) {
         _data = std::move(other);
+    }
+
+    void load(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferBase &other) {
+        _data = device.create_buffer<BaseType>(other.size());
+        stream << _data.copy_from(other);
     }
 
     void load(luisa::compute::Device &device, luisa::compute::Stream &stream, void *data, size_t size, bool expand=false) {

@@ -1,11 +1,6 @@
 #pragma once
 #include <ludf/core/type.h>
 
-template <class T>
-inline constexpr TypeId type_to_id() {
-    return TypeId::EMPTY;
-}
-
 template <TypeId id>
 struct id_to_type_impl {
     using type = void;
@@ -16,10 +11,6 @@ using id_to_type = typename id_to_type_impl<id>::type;
 
 #define TYPE_MAPPING(TYPE, ID) \
     template <> \
-    inline constexpr TypeId type_to_id<TYPE>() { \
-        return ID; \
-    } \
-    template <> \
     struct id_to_type_impl<ID> { \
         using type = TYPE; \
     }
@@ -27,7 +18,7 @@ using id_to_type = typename id_to_type_impl<id>::type;
 TYPE_MAPPING(int32_t, TypeId::INT32);
 TYPE_MAPPING(uint32_t, TypeId::UINT32);
 TYPE_MAPPING(float, TypeId::FLOAT32);
-// TYPE_MAPPING(int64_t, TypeId::INT64);
+TYPE_MAPPING(int32_t, TypeId::TIMESTAMP);
 
 #undef TYPE_MAPPING
 
@@ -49,6 +40,7 @@ inline size_t id_to_size(TypeId id) {
         SIZE_MAPPING(TypeId::INT32)
         SIZE_MAPPING(TypeId::UINT32)
         SIZE_MAPPING(TypeId::FLOAT32)
+        SIZE_MAPPING(TypeId::TIMESTAMP)
         // SIZE_MAPPING(TypeId::INT64)
     default:
         return -1;
@@ -64,7 +56,7 @@ decltype(auto) type_dispatcher(const DataType &dtype, Functor f, Args&&... args)
         case TypeId::FLOAT32: return f.template operator()<id_to_type<TypeId::FLOAT32>>(std::forward<Args>(args)...);
         case TypeId::INT32: return f.template operator()<id_to_type<TypeId::INT32>>(std::forward<Args>(args)...);
         case TypeId::UINT32: return f.template operator()<id_to_type<TypeId::UINT32>>(std::forward<Args>(args)...);
-        // case TypeId::INT64: return f.template operator()<id_to_type<TypeId::INT64>>(std::forward<Args>(args)...);
+        case TypeId::TIMESTAMP: return f.template operator()<id_to_type<TypeId::TIMESTAMP>>(std::forward<Args>(args)...);
     }
     LUISA_ERROR_WITH_LOCATION("A mismatched functor is invoked");
     return f.template operator()<id_to_type<TypeId::INT32>>(std::forward<Args>(args)...);

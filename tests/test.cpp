@@ -63,12 +63,12 @@ int main(int argc, char *argv[]) {
     // read_csv("data/TRD_Dalyr0.csv", table);
 
     uint seed = 0;
-    uint size = 20000;
-    auto id_vec = createRandomVector<int32_t>(size, 0, 5, seed);
+    uint size = std::stoi(argv[2]);
+    auto id_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[3]), seed);
     table.create_column("id", TypeId::INT32);
     table.append_column("id", id_vec);
 
-    auto opnprc_vec = createRandomVector<float>(size, 0.0, 1.0, seed + 20);
+    auto opnprc_vec = createRandomVector<float>(size, 0.0, 100, seed + 20);
     table.create_column("opnprc", TypeId::FLOAT32);
     table.append_column("opnprc", opnprc_vec);
 
@@ -83,6 +83,10 @@ int main(int argc, char *argv[]) {
     auto loprc_vec = createRandomVector<float>(size, 0, 100, seed + 3);
     table.create_column("loprc", TypeId::FLOAT32);
     table.append_column("loprc", loprc_vec);
+
+    auto trdvol_vec = createRandomVector<int32_t>(size, 0, 100, seed + 4);
+    table.create_column("trdvol", TypeId::UINT32);
+    table.append_column("trdvol", trdvol_vec);
     // table.create_column("id", TypeId::INT32);
     // vector<int> t = {0, 1, 2, 3};
     // vector<int> t2 = {0, 1, 2, 3};
@@ -97,11 +101,23 @@ int main(int argc, char *argv[]) {
 
     auto agg_op_map = unordered_map<string, vector<AggeragateOp>>();
 
-    agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::COUNT}});
+    agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    // agg_op_map.insert({"clsprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    // agg_op_map.insert({"hiprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    // agg_op_map.insert({"loprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    // agg_op_map.insert({"trdvol", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
 
-    table.group_by("id", agg_op_map);
-
-
+    for (int i = 0; i < 100; ++i) {
+        clock.tic();
+        int th = 100;
+        table.query().where("id", FilterOp::LESS, &th)->group_by("id", agg_op_map);
+        LUISA_INFO("Time: {} ms", clock.toc());
+    }
+    int th = 100;
+    clock.tic();
+    table.where("id", FilterOp::LESS, &th)->group_by("id", agg_op_map);
+    LUISA_INFO("Time: {} ms", clock.toc());
+    table.print_table();
     
     // int64_t th = std::stoi(argv[2]);
     // // long long th2 = std::stoi(argv[3]);
@@ -112,7 +128,7 @@ int main(int argc, char *argv[]) {
     // // }
     // table.where("id", FilterOp::LESS, &th);
 
-    table.print_table();
+    // table.print_table();
 
     // print_buffer(stream, res.view().as<int>());
     std::cout << "End.\n";

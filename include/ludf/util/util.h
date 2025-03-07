@@ -114,7 +114,6 @@ struct sort_column {
         using namespace luisa;
         using namespace luisa::compute;
         using namespace luisa::compute::cuda::lcub;
-        std::cout << "Sort Column:\n";
 
         size_t num_item = data.size();
         BufferIndex indices_in = device.create_buffer<uint>(num_item);
@@ -122,8 +121,6 @@ struct sort_column {
         BufferView<T> data_in_view = data.view<T>();
         BufferBase data_out = device.create_buffer<BaseType>(num_item * sizeof(T) / sizeof(BaseType));
         stream << ShaderCollector<uint>::get_instance(device)->arange_shader(indices_in).dispatch(num_item) << synchronize();
-        
-        print_buffer(stream, indices_in.view());
 
         Buffer<int> temp_storage;
         size_t temp_storage_size = -1;
@@ -132,9 +129,6 @@ struct sort_column {
 
         temp_storage = device.create_buffer<int>(temp_storage_size);
         stream << DeviceRadixSort::SortPairs(temp_storage, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
-
-        print_buffer(stream, data_out.view().as<T>());
-        print_buffer(stream, indices_out.view());
 
         sorted_result.load(std::move(data_out));
 
@@ -148,19 +142,12 @@ struct adjacent_diff {
         
         using namespace luisa;
         using namespace luisa::compute;
-        std::cout << "Adjacent Diff:\n";
 
         BufferView<T> data_view = data.view<T>();
 
-        print_buffer(stream, data_view);
-
-        std::cout << "data size: " << data.size() << '\n';
         BufferIndex adjacent_diff_result = device.create_buffer<uint>(data.size());
         stream << ShaderCollector<uint>::get_instance(device)->reset_shader(adjacent_diff_result).dispatch(1);
         if (data.size() > 1) stream << ShaderCollector<T>::get_instance(device)->adjacent_diff_shader(data_view, adjacent_diff_result).dispatch(data.size() - 1);
-        
-        
-        print_buffer(stream, adjacent_diff_result.view());
         return std::move(adjacent_diff_result);
     }
 };
@@ -175,16 +162,11 @@ struct aggregate_column {
         BufferView<T> data_view = data.view<T>();
 
         if (op == AggeragateOp::COUNT) {
-            BufferBase res_buf = device.create_buffer<BaseType>(num_group * sizeof(uint) / sizeof(BaseType));
-            stream << ShaderCollector<uint>::get_instance(device)->reset_shader(res_buf.view().as<uint>()).dispatch(indices.size())
-                   << ShaderCollector<T>::get_instance(device)->aggregate_count_shader(res_buf.view().as<uint>(), indices).dispatch(indices.size());
-            return Column{std::move(res_buf), TypeId::UINT32};
-        } else if (op == AggeragateOp::MEAN) {
-
+            return Column{TypeId::UINT32};
         } else {
             BufferBase res_buf = device.create_buffer<BaseType>(num_group * sizeof(T) / sizeof(BaseType));
-            stream << ShaderCollector<T>::get_instance(device)->reset_shader(res_buf.view().as<T>()).dispatch(indices.size())
-                   << ShaderCollector<T>::get_instance(device)->aggregate_shader_map[op](data_view, res_buf.view().as<T>(), indices).dispatch(indices.size());
+            stream << ShaderCollector<T>::get_instance(device)->reset_shader(res_buf.view().as<T>()).dispatch(num_group);
+            stream << ShaderCollector<T>::get_instance(device)->aggregate_shader_map[op](data_view, res_buf.view().as<T>(), indices).dispatch(indices.size());
             return Column{std::move(res_buf), data.dtype()};
         }
 
@@ -194,7 +176,25 @@ struct aggregate_column {
     }
 };
 
+struct sum_to_mean {
+    template <class T>
+    void operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &sum_data, BufferViewIndex count_data) {
+        
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        BufferView<T> data_view = sum_data.view<T>();
+        BufferBase result = device.create_buffer<BaseType>(sum_data.size() * sizeof(float) / sizeof(BaseType));
+
+        stream << ShaderCollector<T>::get_instance(device)->sum_to_mean_shader(data_view, count_data, result.view().as<float>()).dispatch(sum_data.size());
+
+        sum_data.set_dtype(TypeId::FLOAT32);
+        sum_data.load(std::move(result));
+    }
+};
+
 BufferIndex inclusive_sum(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result);
+BufferBase unique_count(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result, BufferIndex &indices, uint num_group);
 
 // template <class T>
 // BufferIndex make_filter_indices(Device &device, Stream &stream, const BufferView<T> &data, const FilterOp &op, const T &threshold) {
