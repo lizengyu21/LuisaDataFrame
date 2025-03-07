@@ -84,8 +84,8 @@ int main(int argc, char *argv[]) {
     table.create_column("loprc", TypeId::FLOAT32);
     table.append_column("loprc", loprc_vec);
 
-    auto trdvol_vec = createRandomVector<int32_t>(size, 0, 10000, seed + 4);
-    table.create_column("trdvol", TypeId::UINT32);
+    auto trdvol_vec = createRandomVector<uint32_t>(size, 0, 10000000, seed + 4);
+    table.create_column("trdvol", TypeId::TIMESTAMP);
     table.append_column("trdvol", trdvol_vec);
     // table.create_column("id", TypeId::INT32);
     // vector<int> t = {0, 1, 2, 3};

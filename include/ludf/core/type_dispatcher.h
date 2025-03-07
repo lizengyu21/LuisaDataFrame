@@ -18,7 +18,7 @@ using id_to_type = typename id_to_type_impl<id>::type;
 TYPE_MAPPING(int32_t, TypeId::INT32);
 TYPE_MAPPING(uint32_t, TypeId::UINT32);
 TYPE_MAPPING(float, TypeId::FLOAT32);
-TYPE_MAPPING(int32_t, TypeId::TIMESTAMP);
+TYPE_MAPPING(uint32_t, TypeId::TIMESTAMP);
 
 #undef TYPE_MAPPING
 
