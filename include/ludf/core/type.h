@@ -8,12 +8,14 @@ using BufferIndex = luisa::compute::Buffer<uint>;
 using BaseType = int;
 using BufferBase = luisa::compute::Buffer<BaseType>;
 
+// namespace lc = luisa::compute;
+
 enum class TypeId {
     EMPTY = 0,
     INT32,
     UINT32,
     FLOAT32,
-    LONG_INT,
+    // INT64,
 };
 
 enum class AggeragateOp {

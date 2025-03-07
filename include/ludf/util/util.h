@@ -3,8 +3,7 @@
 #include <ludf/column/column.h>
 #include <ludf/util/kernel.h>
 
-using namespace luisa;
-using namespace luisa::compute;
+#include <luisa/backends/ext/cuda/lcub/device_radix_sort.h>
 
 
 template<class T>
@@ -21,20 +20,23 @@ inline void print_buffer(luisa::compute::Stream &stream, const luisa::compute::B
 //     return std::move(result);
 // }
 
-template <class T>
-BufferBase reindex(Device &device, Stream &stream, const BufferView<T> &data, const BufferViewIndex &indices, size_t res_size = 0) {
-    LUISA_ASSERT(indices.size() <= data.size(), "indices' length must be less than data's.");
-    LUISA_ASSERT(indices.size() > 0 && data.size() > 0, "invoke reindex must be non-empty.");
-    BufferBase result;
-    if (res_size == 0) result = device.create_buffer<BaseType>((indices.size() * sizeof(T)) / sizeof(BaseType));
-    else result = device.create_buffer<BaseType>((res_size * sizeof(T)) / sizeof(BaseType));
-    stream << ShaderCollector<T>::get_instance(device)->reindex_shader(result, data, indices).dispatch(indices.size());
-    return std::move(result);
-}
+// template <class T>
+// BufferBase reindex(Device &device, Stream &stream, const BufferView<T> &data, const BufferViewIndex &indices, size_t res_size = 0) {
+//     LUISA_ASSERT(indices.size() <= data.size(), "indices' length must be less than data's.");
+//     LUISA_ASSERT(indices.size() > 0 && data.size() > 0, "invoke reindex must be non-empty.");
+//     BufferBase result;
+//     if (res_size == 0) result = device.create_buffer<BaseType>((indices.size() * sizeof(T)) / sizeof(BaseType));
+//     else result = device.create_buffer<BaseType>((res_size * sizeof(T)) / sizeof(BaseType));
+//     stream << ShaderCollector<T>::get_instance(device)->reindex_shader(result, data, indices).dispatch(indices.size());
+//     return std::move(result);
+// }
 
 struct inverse_reindex {
     template <class T>
-    void operator()(Device &device, Stream &stream, Column &data, BufferIndex &indices) {
+    void operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, BufferIndex &indices) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
         if (indices.size() == 0) {
             data.resize(device, stream, 0);
             return;
@@ -47,9 +49,34 @@ struct inverse_reindex {
     }
 };
 
+struct reindex {
+    template <class T>
+    void operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, BufferIndex &indices, uint res_size = 0) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        if (indices.size() == 0) {
+            data.resize(device, stream, 0);
+            return;
+        }
+
+        BufferBase res_buf;
+        if (res_size > 0) res_buf = device.create_buffer<BaseType>(res_size * sizeof(T) / sizeof(BaseType));
+        else res_buf = device.create_buffer<BaseType>(indices.size() * sizeof(T) / sizeof(BaseType));
+
+        auto dst_view = res_buf.view().as<T>();
+        auto src_view = data.view<T>();
+        stream << ShaderCollector<T>::get_instance(device)->reindex_shader(dst_view, src_view, indices).dispatch(indices.size());
+        data.load(std::move(res_buf));
+    }
+};
+
 struct concat_column {
     template <class T>
-    void operator()(Device &device, Stream &stream, Column &lhs, Column &rhs) {
+    void operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &lhs, Column &rhs) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
         LUISA_ASSERT(lhs._dtype.id() == rhs._dtype.id(), "concat two col must be same type");
         auto start_id = lhs.size();
         lhs.resize(device, stream, rhs.size_bytes() + lhs.size_bytes());
@@ -61,10 +88,13 @@ struct concat_column {
 
 struct make_inverse_reindex {
     template <class T>
-    BufferIndex operator()(Device &device, Stream &stream, Column &data, const FilterOp op, void *threshold) {   
+    BufferIndex operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, const FilterOp op, void *threshold) { 
+        using namespace luisa;
+        using namespace luisa::compute;
+
         BufferIndex indices = device.create_buffer<uint>(data.size());
         BufferIndex counter = device.create_buffer<uint>(1);
-        stream << ShaderCollector<T>::get_instance(device)->reset_shader(counter).dispatch(1);
+        stream << ShaderCollector<id_to_type<TypeId::UINT32>>::get_instance(device)->reset_shader(counter).dispatch(1);
         T thres = *reinterpret_cast<T*>(threshold);
         stream << ShaderCollector<T>::get_instance(device)->make_inverse_reindex_shader_map[op](indices, counter, data.view<T>(), *reinterpret_cast<T*>(threshold)).dispatch(data.size());
         uint count;
@@ -77,6 +107,94 @@ struct make_inverse_reindex {
         return std::move(res);
     }
 };
+
+struct sort_column {
+    template <class T>
+    BufferIndex operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, Column &sorted_result) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        using namespace luisa::compute::cuda::lcub;
+        std::cout << "Sort Column:\n";
+
+        size_t num_item = data.size();
+        BufferIndex indices_in = device.create_buffer<uint>(num_item);
+        BufferIndex indices_out = device.create_buffer<uint>(num_item);
+        BufferView<T> data_in_view = data.view<T>();
+        BufferBase data_out = device.create_buffer<BaseType>(num_item * sizeof(T) / sizeof(BaseType));
+        stream << ShaderCollector<uint>::get_instance(device)->arange_shader(indices_in).dispatch(num_item) << synchronize();
+        
+        print_buffer(stream, indices_in.view());
+
+        Buffer<int> temp_storage;
+        size_t temp_storage_size = -1;
+
+        DeviceRadixSort::SortPairs(temp_storage_size, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
+
+        temp_storage = device.create_buffer<int>(temp_storage_size);
+        stream << DeviceRadixSort::SortPairs(temp_storage, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
+
+        print_buffer(stream, data_out.view().as<T>());
+        print_buffer(stream, indices_out.view());
+
+        sorted_result.load(std::move(data_out));
+
+        return std::move(indices_out);
+    }
+};
+
+struct adjacent_diff {
+    template <class T>
+    BufferIndex operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data) {
+        
+        using namespace luisa;
+        using namespace luisa::compute;
+        std::cout << "Adjacent Diff:\n";
+
+        BufferView<T> data_view = data.view<T>();
+
+        print_buffer(stream, data_view);
+
+        std::cout << "data size: " << data.size() << '\n';
+        BufferIndex adjacent_diff_result = device.create_buffer<uint>(data.size());
+        stream << ShaderCollector<uint>::get_instance(device)->reset_shader(adjacent_diff_result).dispatch(1);
+        if (data.size() > 1) stream << ShaderCollector<T>::get_instance(device)->adjacent_diff_shader(data_view, adjacent_diff_result).dispatch(data.size() - 1);
+        
+        
+        print_buffer(stream, adjacent_diff_result.view());
+        return std::move(adjacent_diff_result);
+    }
+};
+
+struct aggregate_column {
+    template <class T>
+    Column operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, const AggeragateOp &op, BufferIndex &indices, uint num_group) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+
+        BufferView<T> data_view = data.view<T>();
+
+        if (op == AggeragateOp::COUNT) {
+            BufferBase res_buf = device.create_buffer<BaseType>(num_group * sizeof(uint) / sizeof(BaseType));
+            stream << ShaderCollector<uint>::get_instance(device)->reset_shader(res_buf.view().as<uint>()).dispatch(indices.size())
+                   << ShaderCollector<T>::get_instance(device)->aggregate_count_shader(res_buf.view().as<uint>(), indices).dispatch(indices.size());
+            return Column{std::move(res_buf), TypeId::UINT32};
+        } else if (op == AggeragateOp::MEAN) {
+
+        } else {
+            BufferBase res_buf = device.create_buffer<BaseType>(num_group * sizeof(T) / sizeof(BaseType));
+            stream << ShaderCollector<T>::get_instance(device)->reset_shader(res_buf.view().as<T>()).dispatch(indices.size())
+                   << ShaderCollector<T>::get_instance(device)->aggregate_shader_map[op](data_view, res_buf.view().as<T>(), indices).dispatch(indices.size());
+            return Column{std::move(res_buf), data.dtype()};
+        }
+
+        Column result{data.dtype()};
+
+        return std::move(result);
+    }
+};
+
+BufferIndex inclusive_sum(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result);
 
 // template <class T>
 // BufferIndex make_filter_indices(Device &device, Stream &stream, const BufferView<T> &data, const FilterOp &op, const T &threshold) {
@@ -111,7 +229,7 @@ struct make_inverse_reindex {
 
 struct print_column {
     template <class T>
-    void operator()(Stream &stream, Column &data) {
+    void operator()(luisa::compute::Stream &stream, Column &data) {
         if (data.size() == 0) {
             std::cout << "[]" << std::endl;
             return;
@@ -122,7 +240,9 @@ struct print_column {
 
 template<class T>
 inline void print_buffer(luisa::compute::Stream &stream, const luisa::compute::BufferView<T> & buffer) {
+    using namespace luisa;
     using namespace luisa::compute;
+    
     auto max_len = 20;
     auto size = buffer.size();
     if (size == 0) {

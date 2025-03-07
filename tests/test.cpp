@@ -1,3 +1,4 @@
+
 #include <ludf/core/type.h>
 #include <ludf/core/type_dispatcher.h>
 #include <ludf/column/column.h>
@@ -7,8 +8,10 @@
 #include <ludf/io/read_csv.h>
 #include <random>
 
+
 using namespace luisa;
 using namespace luisa::compute;
+// using namespace luisa::compute::cuda::lcub;
 
 template <typename T>
 vector<T> createRandomVector(size_t size, T minValue, T maxValue, unsigned int seed) {
@@ -60,12 +63,12 @@ int main(int argc, char *argv[]) {
     // read_csv("data/TRD_Dalyr0.csv", table);
 
     uint seed = 0;
-    uint size = 6000000;
-    auto id_vec = createRandomVector<long long>(size, 0, 100, seed);
-    table.create_column("id", TypeId::LONG_INT);
+    uint size = 20000;
+    auto id_vec = createRandomVector<int32_t>(size, 0, 5, seed);
+    table.create_column("id", TypeId::INT32);
     table.append_column("id", id_vec);
 
-    auto opnprc_vec = createRandomVector<float>(size, 0, 100, seed);
+    auto opnprc_vec = createRandomVector<float>(size, 0.0, 1.0, seed + 20);
     table.create_column("opnprc", TypeId::FLOAT32);
     table.append_column("opnprc", opnprc_vec);
 
@@ -92,16 +95,24 @@ int main(int argc, char *argv[]) {
 
     table.print_table();
 
-    long long th = std::stoi(argv[2]);
-    // long long th2 = std::stoi(argv[3]);
-    for (int i = 0; i < 100; ++i) {
-        clock.tic();
-        table.query().where("id", FilterOp::LESS, &th);
-        LUISA_INFO("Time: {} ms", clock.toc());
-    }
+    auto agg_op_map = unordered_map<string, vector<AggeragateOp>>();
+
+    agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::COUNT}});
+
+    table.group_by("id", agg_op_map);
+
+
+    
+    // int64_t th = std::stoi(argv[2]);
+    // // long long th2 = std::stoi(argv[3]);
+    // // for (int i = 0; i < 100; ++i) {
+    // //     clock.tic();
+    // //     table.query().where("id", FilterOp::LESS, &th);
+    // //     LUISA_INFO("Time: {} ms", clock.toc());
+    // // }
     // table.where("id", FilterOp::LESS, &th);
 
-    // table.print_table();
+    table.print_table();
 
     // print_buffer(stream, res.view().as<int>());
     std::cout << "End.\n";

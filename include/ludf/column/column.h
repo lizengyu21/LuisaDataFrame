@@ -3,20 +3,20 @@
 #include <luisa/luisa-compute.h>
 #include <ludf/util/kernel.h>
 
-using namespace luisa;
-using namespace luisa::compute;
-
 class Column {
     static const size_t stride = sizeof(BaseType);
 public:
     DataType _dtype;
-    Buffer<BaseType> _data;
+    BufferBase _data;
 
     Column(DataType dtype = DataType{TypeId::EMPTY}) : _dtype(dtype) {}
     Column(BufferBase &&data, DataType dtype) : _dtype(dtype), _data(std::move(data)) {}
+    Column(Column &&) = default;
+    Column(const Column &) = delete;
+    Column &operator=(Column &&) = default;
 
     template <class T>
-    BufferView<T> view() {
+    luisa::compute::BufferView<T> view() {
         return _data.view().as<T>();
     }
 
@@ -33,13 +33,13 @@ public:
         return _dtype;
     }
 
-    Column clone(Device &device, Stream &stream) const {
+    Column clone(luisa::compute::Device &device, luisa::compute::Stream &stream) const {
         BufferBase t = device.create_buffer<BaseType>(_data.size());
         stream << t.copy_from(_data);
         return std::move(Column{std::move(t), _dtype});
     }
 
-    void resize(Device &device, Stream &stream, size_t size_byte) {
+    void resize(luisa::compute::Device &device, luisa::compute::Stream &stream, size_t size_byte) {
         if (size_byte == 0) {
             _data = BufferBase();
             return;
@@ -55,7 +55,7 @@ public:
         _data = std::move(other);
     }
 
-    void load(Device &device, Stream &stream, void *data, size_t size, bool expand=false) {
+    void load(luisa::compute::Device &device, luisa::compute::Stream &stream, void *data, size_t size, bool expand=false) {
         if (expand && _data.size_bytes() < size) {
             _data = device.create_buffer<BaseType>(size / stride);
         } else {
@@ -65,7 +65,7 @@ public:
     }
 
     template <class T>
-    void load(Device &device, Stream &stream, vector<T> data, bool expand=true) {
+    void load(luisa::compute::Device &device, luisa::compute::Stream &stream, luisa::vector<T> data, bool expand=true) {
         load(device, stream, data.data(), data.size_bytes(), expand);
     }
 };
