@@ -52,6 +52,16 @@ public:
         Column &col = _columns[name];
         const auto &type = col.dtype();
         auto reindex = type_dispatcher(type, make_inverse_reindex{}, _device, _stream, col, op, threshold);
-        print_buffer(_stream, reindex.view());
+        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+            type_dispatcher(it->second.dtype(), inverse_reindex{}, _device, _stream, it->second, reindex);
+        }
+        // type_dispatcher(type, inverse_reindex{}, _device, _stream, col, reindex);
+    }
+
+    void print_table() {
+        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+            std::cout << it->first << ": ";
+            type_dispatcher(it->second.dtype(), print_column{}, _stream, it->second);
+        }
     }
 };

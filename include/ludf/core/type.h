@@ -13,6 +13,7 @@ enum class TypeId {
     INT32,
     UINT32,
     FLOAT32,
+    LONG_INT,
 };
 
 enum class AggeragateOp {

@@ -4,9 +4,40 @@
 #include <ludf/util/util.h>
 #include <ludf/table/table.h>
 #include <ludf/util/kernel.h>
+#include <ludf/io/read_csv.h>
+#include <random>
 
 using namespace luisa;
 using namespace luisa::compute;
+
+template <typename T>
+vector<T> createRandomVector(size_t size, T minValue, T maxValue, unsigned int seed) {
+    // 创建一个随机数生成器，并用种子初始化
+    std::mt19937 gen(seed);
+
+    // 根据 T 的类型选择合适的随机数分布
+    if constexpr (std::is_integral<T>::value) {
+        // 对于整数类型，使用均匀整数分布
+        std::uniform_int_distribution<T> dist(minValue, maxValue);
+        vector<T> vec(size);
+        for (auto &elem : vec) {
+            elem = dist(gen);  // 为每个元素生成随机数
+        }
+        return std::move(vec);
+    } else if constexpr (std::is_floating_point<T>::value) {
+        // 对于浮点类型，使用均匀浮点分布
+        std::uniform_real_distribution<T> dist(minValue, maxValue);
+        vector<T> vec(size);
+        for (auto &elem : vec) {
+            elem = dist(gen);  // 为每个元素生成随机数
+        }
+        return std::move(vec);
+    } else {
+        // 如果 T 不是整型或浮点型，可以根据需求报错或返回空向量
+        LUISA_ASSERT(false, "Unsupported type for random vector generation");
+        return vector<T>();
+    }
+}
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -26,22 +57,51 @@ int main(int argc, char *argv[]) {
 
     Table table(device, stream);
 
-    table.create_column("id", TypeId::INT32);
-    vector<int> t = {0, 1, 2, 3};
-    vector<int> t2 = {0, 1, 2, 3};
+    // read_csv("data/TRD_Dalyr0.csv", table);
 
-    table.append_column("id", t);
-    table.append_column("id", t);
-    table.append_column("id", t);
+    uint seed = 0;
+    uint size = 6000000;
+    auto id_vec = createRandomVector<long long>(size, 0, 100, seed);
+    table.create_column("id", TypeId::LONG_INT);
+    table.append_column("id", id_vec);
 
-    // auto tab = table.query();
+    auto opnprc_vec = createRandomVector<float>(size, 0, 100, seed);
+    table.create_column("opnprc", TypeId::FLOAT32);
+    table.append_column("opnprc", opnprc_vec);
 
-    print_buffer(stream, table._columns["id"].view<int>());
+    auto clsprc_vec = createRandomVector<float>(size, 0, 100, seed + 1);
+    table.create_column("clsprc", TypeId::FLOAT32);
+    table.append_column("clsprc", clsprc_vec);
 
-    int th = std::stoi(argv[2]);
-    table.where("id", FilterOp::LESS, &th);
+    auto hiprc_vec = createRandomVector<float>(size, 0, 100, seed + 2);
+    table.create_column("hiprc", TypeId::FLOAT32);
+    table.append_column("hiprc", hiprc_vec);
 
-    // print_buffer(stream, tab._columns["id"].view<int>());
+    auto loprc_vec = createRandomVector<float>(size, 0, 100, seed + 3);
+    table.create_column("loprc", TypeId::FLOAT32);
+    table.append_column("loprc", loprc_vec);
+    // table.create_column("id", TypeId::INT32);
+    // vector<int> t = {0, 1, 2, 3};
+    // vector<int> t2 = {0, 1, 2, 3};
+
+    // table.append_column("id", t);
+    // table.append_column("id", t);
+    // table.append_column("id", t);
+
+    // // auto tab = table.query();
+
+    table.print_table();
+
+    long long th = std::stoi(argv[2]);
+    // long long th2 = std::stoi(argv[3]);
+    for (int i = 0; i < 100; ++i) {
+        clock.tic();
+        table.query().where("id", FilterOp::LESS, &th);
+        LUISA_INFO("Time: {} ms", clock.toc());
+    }
+    // table.where("id", FilterOp::LESS, &th);
+
+    // table.print_table();
 
     // print_buffer(stream, res.view().as<int>());
     std::cout << "End.\n";

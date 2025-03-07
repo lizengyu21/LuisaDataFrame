@@ -40,11 +40,19 @@ public:
     }
 
     void resize(Device &device, Stream &stream, size_t size_byte) {
+        if (size_byte == 0) {
+            _data = BufferBase();
+            return;
+        }
         auto t = device.create_buffer<BaseType>(size_byte / stride);
         size_t dispatch_size = t.size() < _data.size() ? t.size() : _data.size();
         stream << ShaderCollector<BaseType>::get_instance(device)->copy_shader(t, _data).dispatch(dispatch_size);
         // stream << synchronize();
         _data = std::move(t);
+    }
+
+    void load(BufferBase &&other) {
+        _data = std::move(other);
     }
 
     void load(Device &device, Stream &stream, void *data, size_t size, bool expand=false) {

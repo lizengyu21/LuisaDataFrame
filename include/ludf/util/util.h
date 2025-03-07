@@ -10,16 +10,16 @@ using namespace luisa::compute;
 template<class T>
 inline void print_buffer(luisa::compute::Stream &stream, const luisa::compute::BufferView<T> & buffer);
 
-template <class T>
-BufferBase inverse_reindex(Device &device, Stream &stream, const BufferView<T> &data, const BufferViewIndex &indices, size_t res_size = 0) {
-    LUISA_ASSERT(indices.size() <= data.size(), "indices' length must be less than data's.");
-    LUISA_ASSERT(indices.size() > 0 && data.size() > 0, "invoke reindex must be non-empty.");
-    BufferBase result;
-    if (res_size == 0) result = device.create_buffer<BaseType>((indices.size() * sizeof(T)) / sizeof(BaseType));
-    else result = device.create_buffer<BaseType>((res_size * sizeof(T)) / sizeof(BaseType));
-    stream << ShaderCollector<T>::get_instance(device)->inverse_reindex_shader(result, data, indices).dispatch(indices.size());
-    return std::move(result);
-}
+// template <class T>
+// BufferBase inverse_reindex(Device &device, Stream &stream, const BufferView<T> &data, const BufferViewIndex &indices, size_t res_size = 0) {
+//     LUISA_ASSERT(indices.size() <= data.size(), "indices' length must be less than data's.");
+//     LUISA_ASSERT(indices.size() > 0 && data.size() > 0, "invoke reindex must be non-empty.");
+//     BufferBase result;
+//     if (res_size == 0) result = device.create_buffer<BaseType>((indices.size() * sizeof(T)) / sizeof(BaseType));
+//     else result = device.create_buffer<BaseType>((res_size * sizeof(T)) / sizeof(BaseType));
+//     stream << ShaderCollector<T>::get_instance(device)->inverse_reindex_shader(result, data, indices).dispatch(indices.size());
+//     return std::move(result);
+// }
 
 template <class T>
 BufferBase reindex(Device &device, Stream &stream, const BufferView<T> &data, const BufferViewIndex &indices, size_t res_size = 0) {
@@ -32,6 +32,20 @@ BufferBase reindex(Device &device, Stream &stream, const BufferView<T> &data, co
     return std::move(result);
 }
 
+struct inverse_reindex {
+    template <class T>
+    void operator()(Device &device, Stream &stream, Column &data, BufferIndex &indices) {
+        if (indices.size() == 0) {
+            data.resize(device, stream, 0);
+            return;
+        }
+        BufferBase res_buf = device.create_buffer<BaseType>(indices.size() * sizeof(T) / sizeof(BaseType));
+        auto dst_view = res_buf.view().as<T>();
+        auto src_view = data.view<T>();
+        stream << ShaderCollector<T>::get_instance(device)->inverse_reindex_shader(dst_view, src_view, indices).dispatch(indices.size());
+        data.load(std::move(res_buf));
+    }
+};
 
 struct concat_column {
     template <class T>
@@ -47,15 +61,17 @@ struct concat_column {
 
 struct make_inverse_reindex {
     template <class T>
-    BufferIndex operator()(Device &device, Stream &stream, Column &data, const FilterOp op, void *threshold) {
+    BufferIndex operator()(Device &device, Stream &stream, Column &data, const FilterOp op, void *threshold) {   
         BufferIndex indices = device.create_buffer<uint>(data.size());
         BufferIndex counter = device.create_buffer<uint>(1);
         stream << ShaderCollector<T>::get_instance(device)->reset_shader(counter).dispatch(1);
         T thres = *reinterpret_cast<T*>(threshold);
-        std::cout << "::: " << thres << std::endl;
         stream << ShaderCollector<T>::get_instance(device)->make_inverse_reindex_shader_map[op](indices, counter, data.view<T>(), *reinterpret_cast<T*>(threshold)).dispatch(data.size());
         uint count;
         stream << counter.copy_to(&count) << synchronize();
+        if (count == 0) {
+            return BufferIndex();
+        }
         BufferIndex res = device.create_buffer<uint>(count);
         stream << ShaderCollector<uint>::get_instance(device)->copy_shader(res, indices).dispatch(count);
         return std::move(res);
@@ -93,6 +109,16 @@ struct make_inverse_reindex {
 // } 
 
 
+struct print_column {
+    template <class T>
+    void operator()(Stream &stream, Column &data) {
+        if (data.size() == 0) {
+            std::cout << "[]" << std::endl;
+            return;
+        }
+        print_buffer(stream, data.view<T>());
+    }
+};
 
 template<class T>
 inline void print_buffer(luisa::compute::Stream &stream, const luisa::compute::BufferView<T> & buffer) {
