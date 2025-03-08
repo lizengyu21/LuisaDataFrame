@@ -36,6 +36,11 @@ enum class FilterOp {
     NOT_EQUAL,
 };
 
+enum class SortOrder {
+    Ascending = 0,
+    Descending,
+};
+
 class DataType {
 public:
     TypeId _id;

@@ -2,7 +2,7 @@
 #include <luisa/luisa-compute.h>
 #include <ludf/column/column.h>
 #include <ludf/util/kernel.h>
-
+#include <any>
 #include <luisa/backends/ext/cuda/lcub/device_radix_sort.h>
 
 
@@ -88,15 +88,15 @@ struct concat_column {
 
 struct make_inverse_reindex {
     template <class T>
-    BufferIndex operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, const FilterOp op, void *threshold) { 
+    BufferIndex operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, const FilterOp op, std::any threshold) { 
         using namespace luisa;
         using namespace luisa::compute;
 
         BufferIndex indices = device.create_buffer<uint>(data.size());
         BufferIndex counter = device.create_buffer<uint>(1);
         stream << ShaderCollector<id_to_type<TypeId::UINT32>>::get_instance(device)->reset_shader(counter).dispatch(1);
-        T thres = *reinterpret_cast<T*>(threshold);
-        stream << ShaderCollector<T>::get_instance(device)->make_inverse_reindex_shader_map[op](indices, counter, data.view<T>(), *reinterpret_cast<T*>(threshold)).dispatch(data.size());
+        T thres = std::any_cast<T>(threshold);
+        stream << ShaderCollector<T>::get_instance(device)->make_inverse_reindex_shader_map[op](indices, counter, data.view<T>(), thres).dispatch(data.size());
         uint count;
         stream << counter.copy_to(&count) << synchronize();
         if (count == 0) {
@@ -110,7 +110,7 @@ struct make_inverse_reindex {
 
 struct sort_column {
     template <class T>
-    BufferIndex operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, Column &sorted_result) {
+    BufferIndex operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, Column &sorted_result, const SortOrder &order = SortOrder::Ascending) {
         using namespace luisa;
         using namespace luisa::compute;
         using namespace luisa::compute::cuda::lcub;
@@ -125,11 +125,13 @@ struct sort_column {
         Buffer<int> temp_storage;
         size_t temp_storage_size = -1;
 
-        DeviceRadixSort::SortPairs(temp_storage_size, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
+        if (order == SortOrder::Ascending) DeviceRadixSort::SortPairs(temp_storage_size, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
+        else DeviceRadixSort::SortPairsDescending(temp_storage_size, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
 
         temp_storage = device.create_buffer<int>(temp_storage_size);
-        stream << DeviceRadixSort::SortPairs(temp_storage, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
-
+        if (order == SortOrder::Ascending) stream << DeviceRadixSort::SortPairs(temp_storage, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
+        else stream << DeviceRadixSort::SortPairsDescending(temp_storage, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
+        
         sorted_result.load(std::move(data_out));
 
         return std::move(indices_out);

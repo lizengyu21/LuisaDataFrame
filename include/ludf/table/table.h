@@ -3,6 +3,7 @@
 #include <ludf/column/column.h>
 #include <ludf/core/type.h>
 #include <ludf/util/util.h>
+#include <any>
 
 class Table {
     luisa::compute::Device &_device;
@@ -51,7 +52,7 @@ public:
         append_column(name, data.data(), data.size_bytes());
     }
 
-    Table *where(const luisa::string &name, const FilterOp op, void *threshold) {
+    Table *where(const luisa::string &name, const FilterOp op, std::any threshold) {
         if (_columns.find(name) == _columns.end()) return this;
         Column &col = _columns[name];
         const auto &type = col.dtype();
@@ -124,6 +125,29 @@ public:
         _columns = std::move(res_columns);
         return this;
 
+    }
+
+    Table *sort(const luisa::string &name, SortOrder order) {
+        if (_columns.find(name) == _columns.end()) return this;
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        Column &col = _columns[name];
+        if (col.size() == 0) return this;
+
+        const auto &type = col.dtype();
+        Column sorted_result{type};
+        auto indices = type_dispatcher(type, sort_column{}, _device, _stream, col, sorted_result, order);
+
+        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+            if (name == it->first) continue;
+            Column &current_col = it->second;
+            const auto &current_col_type = current_col.dtype();
+            type_dispatcher(current_col_type, inverse_reindex{}, _device, _stream, current_col, indices);
+        }
+
+        _columns[name] = std::move(sorted_result);
+        return this;
     }
 
     void print_table() {

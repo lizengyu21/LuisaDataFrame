@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
     }
     // int th = 100;
     clock.tic();
-    table.group_by("id", agg_op_map);
+    table.sort("id", SortOrder::Descending);
     LUISA_INFO("Time: {} ms", clock.toc());
     table.print_table();
     
