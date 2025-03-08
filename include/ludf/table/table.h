@@ -167,9 +167,30 @@ public:
             LUISA_WARNING("APPLY SKIP: encouter different type -- COL_TYPE: {} <==> FUNC_TYPE: {}", type_id_string(type.id()), typeid(T).name());
             return this;
         }
-
-        type_dispatcher(type, apply_on_column{}, _device, _stream, col, reinterpret_cast<void *>(&apply_func));
+        apply_on_column_T{}.operator()<T>(_device, _stream, col, reinterpret_cast<void *>(&apply_func));
         
+        return this;
+    }
+
+    template <class Ret, class T, std::enable_if_t<!std::is_same_v<Ret, T>, int> = 0>
+    Table *apply(const luisa::string &name, luisa::compute::Callable<Ret(T)> &apply_func, TypeId ret_type_id = TypeId::EMPTY) {
+        if (_columns.find(name) == _columns.end()) return this;
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        Column &col = _columns[name];
+        if (col.size() == 0) return this;
+        const auto &type = col.dtype();
+        if (ret_type_id == TypeId::EMPTY) ret_type_id = type_to_id<Ret>();
+        bool is_valid = same_type<T>(type.id()) && same_type<Ret>(ret_type_id);
+
+        if (!is_valid) {
+            LUISA_WARNING("APPLY SKIP: encouter different type -- COL_TYPE: {}({}) <==> FUNC_TYPE: {}({})", type_id_string(ret_type_id), type_id_string(type.id()), typeid(Ret).name(), typeid(T).name());
+            return this;
+        }
+
+        apply_on_column_Ret_T{}.operator()<Ret, T>(_device, _stream, col, reinterpret_cast<void *>(&apply_func));
+        col.set_dtype(ret_type_id);
         return this;
     }
 

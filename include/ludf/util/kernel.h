@@ -208,6 +208,21 @@ public:
             dst.write(x, apply_func(src.read(x)));
         });
     }
+
+    template <class Ret, std::enable_if_t<!std::is_same_v<Ret, T>, int> = 0>
+    luisa::compute::Shader1D<luisa::compute::Buffer<Ret>, luisa::compute::Buffer<T>> create_apply_Ret_T_shader(luisa::compute::Device &device, void *apply_func_ptr) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        auto apply_func = *reinterpret_cast<Callable<Ret(T)>*>(apply_func_ptr);
+
+        auto apply_Ret_T_shader = device.compile<1>([&](BufferVar<Ret> dst, BufferVar<T> src){
+            auto x = dispatch_x();
+            dst.write(x, apply_func(src.read(x)));
+        });
+
+        return std::move(apply_Ret_T_shader);
+    }
 };
 
 #define INSTANTIATE_SHADER(TYPE) template <> ShaderCollector<id_to_type<TYPE>> *ShaderCollector<id_to_type<TYPE>>::instance = nullptr;

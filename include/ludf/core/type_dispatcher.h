@@ -9,18 +9,40 @@ struct id_to_type_impl {
 template <TypeId id>
 using id_to_type = typename id_to_type_impl<id>::type;
 
-#define TYPE_MAPPING(TYPE, ID) \
+template <typename T>
+inline constexpr TypeId base_type_to_id() {
+  return TypeId::EMPTY;
+};
+
+template <typename T>
+constexpr inline TypeId type_to_id() {
+  return base_type_to_id<std::remove_cv_t<T>>();
+}
+
+#define ID_TO_TYPE_MAPPING(TYPE, ID) \
     template <> \
     struct id_to_type_impl<ID> { \
         using type = TYPE; \
     }
 
-TYPE_MAPPING(int32_t, TypeId::INT32);
-TYPE_MAPPING(uint32_t, TypeId::UINT32);
-TYPE_MAPPING(float, TypeId::FLOAT32);
-TYPE_MAPPING(uint32_t, TypeId::TIMESTAMP);
+ID_TO_TYPE_MAPPING(int32_t, TypeId::INT32);
+ID_TO_TYPE_MAPPING(uint32_t, TypeId::UINT32);
+ID_TO_TYPE_MAPPING(float, TypeId::FLOAT32);
+ID_TO_TYPE_MAPPING(uint32_t, TypeId::TIMESTAMP);
 
-#undef TYPE_MAPPING
+#undef ID_TO_TYPE_MAPPING
+
+#define TYPE_TO_ID_MAPPING(TYPE, ID) \
+    template <> \
+    constexpr inline TypeId base_type_to_id<TYPE>() { \
+      return ID; \
+    }
+
+TYPE_TO_ID_MAPPING(int32_t, TypeId::INT32);
+TYPE_TO_ID_MAPPING(uint32_t, TypeId::UINT32);
+TYPE_TO_ID_MAPPING(float, TypeId::FLOAT32);
+
+#undef TYPE_TO_ID_MAPPING
 
 template <TypeId id>
 inline constexpr size_t size_of() {
@@ -73,8 +95,8 @@ inline luisa::string agg_op_string(const AggeragateOp op) {
     }
 }
 
-inline luisa::string type_id_string(const TypeId op) {
-    switch (op) {
+inline luisa::string type_id_string(const TypeId id) {
+    switch (id) {
         case TypeId::EMPTY: return "NONE";
         case TypeId::INT32: return "INT32";
         case TypeId::UINT32: return "UINT32";
@@ -82,6 +104,26 @@ inline luisa::string type_id_string(const TypeId op) {
         case TypeId::TIMESTAMP: return "TIMESTAMP";
         default: return "UNKNOWN";
     }
+}
+
+template <class T>
+bool same_type(const TypeId &id) {
+    return false;
+}
+
+template <>
+bool same_type<int32_t>(const TypeId &id) {
+    return id == TypeId::INT32;
+}
+
+template <>
+bool same_type<uint32_t>(const TypeId &id) {
+    return id == TypeId::UINT32 || id == TypeId::TIMESTAMP;
+}
+
+template <>
+bool same_type<float>(const TypeId &id) {
+    return id == TypeId::FLOAT32;
 }
 
 

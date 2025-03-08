@@ -119,24 +119,27 @@ int main(int argc, char *argv[]) {
     clock.tic();
     table.sort("id", SortOrder::Ascending);
     Callable apply_func1 = [](Float a){
-        Float positive = def(0);
+        UInt positive = def(0);
         $if (a > 0) {
-            positive = def(1);
+            positive = def(2);
         };
         return positive;
     };
 
     Callable apply_func2 = [](UInt a){
-        UInt positive = def(0u);
-        $if (a > 5000000) {
-            positive = def(1);
+        UInt positive = def(2u);
+        $if (a > 1) {
+            positive = def(0);
         };
         return positive;
     };
 
     table.print_table();
-    table.apply("clsprc", apply_func1)->apply("trdvol", apply_func2);
-    LUISA_INFO("Time: {} ms", clock.toc());
+    table.apply("clsprc", apply_func1);
+    // LUISA_INFO("Time: {} ms", clock.toc());
+    table.print_table();
+    table.apply("clsprc", apply_func1);
+    table.apply("clsprc", apply_func2);
     table.print_table();
     
     // int64_t th = std::stoi(argv[2]);

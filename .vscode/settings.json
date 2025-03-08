@@ -89,6 +89,8 @@
         "queue": "cpp",
         "stack": "cpp",
         "__mutex_base": "cpp",
-        "__nullptr": "cpp"
+        "__nullptr": "cpp",
+        "__bit_reference": "cpp",
+        "__string": "cpp"
     }
 }
