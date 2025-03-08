@@ -108,14 +108,7 @@ int main(int argc, char *argv[]) {
     agg_op_map.insert({"hiprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     agg_op_map.insert({"loprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     agg_op_map.insert({"trdvol", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    // agg_op_map.insert({"opnprc", {AggeragateOp::SUM}});
-    // for (int i = 0; i < 20; ++i) {
-    //     clock.tic();
-    //     // int th = 100;
-    //     table.query().group_by("id", agg_op_map);
-    //     LUISA_INFO("Time: {} ms", clock.toc());
-    // }
-    // int th = 100;
+
     clock.tic();
     table.sort("id", SortOrder::Ascending);
     Callable apply_func1 = [](Float a){
