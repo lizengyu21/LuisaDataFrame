@@ -186,6 +186,7 @@ public:
     luisa::compute::Shader1D<BufferIndex, BufferIndex, BufferIndex> adjacent_diff_index_shader;
     luisa::compute::Shader1D<BufferIndex, BufferIndex> unique_count_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, BufferIndex, luisa::compute::Buffer<float>> sum_to_mean_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> apply_shader;
     // luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex, uint> test_shader;
 
 
@@ -194,6 +195,18 @@ public:
             instance = new ShaderCollector(device);
         }
         return instance;
+    }
+
+    void create_apply_shader(luisa::compute::Device &device, void *apply_func_ptr) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        auto apply_func = *reinterpret_cast<Callable<T(T)>*>(apply_func_ptr);
+
+        apply_shader = device.compile<1>([&](BufferVar<T> dst, BufferVar<T> src){
+            auto x = dispatch_x();
+            dst.write(x, apply_func(src.read(x)));
+        });
     }
 };
 

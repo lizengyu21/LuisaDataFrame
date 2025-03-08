@@ -198,6 +198,42 @@ struct sum_to_mean {
     }
 };
 
+struct apply_on_column {
+    template <class T>
+    void operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &col, void *apply_func_ptr) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        BufferView<T> data_view = col.view<T>();
+        BufferBase result = device.create_buffer<BaseType>(col.size() * sizeof(T) / sizeof(BaseType));
+        ShaderCollector<T>::get_instance(device)->create_apply_shader(device, apply_func_ptr);
+        stream << ShaderCollector<T>::get_instance(device)->apply_shader(result.view().as<T>(), data_view).dispatch(col.size());
+
+        col.load(std::move(result));
+
+    }
+};
+
+template <class T>
+bool same_type(const TypeId &id) {
+    return false;
+}
+
+template <>
+bool same_type<int32_t>(const TypeId &id) {
+    return id == TypeId::INT32;
+}
+
+template <>
+bool same_type<uint32_t>(const TypeId &id) {
+    return id == TypeId::UINT32 || id == TypeId::TIMESTAMP;
+}
+
+template <>
+bool same_type<float>(const TypeId &id) {
+    return id == TypeId::FLOAT32;
+}
+
 BufferIndex inclusive_sum(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result);
 BufferBase unique_count(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result, BufferIndex &indices, uint num_group);
 

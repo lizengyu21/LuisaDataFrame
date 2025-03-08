@@ -4,6 +4,7 @@
 #include <ludf/core/type.h>
 #include <ludf/util/util.h>
 #include <any>
+#include <typeinfo>
 
 class Table {
     luisa::compute::Device &_device;
@@ -150,10 +151,34 @@ public:
         return this;
     }
 
+    template <class T>
+    Table *apply(const luisa::string &name, luisa::compute::Callable<T(T)> &apply_func) {
+        if (_columns.find(name) == _columns.end()) return this;
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        Column &col = _columns[name];
+        if (col.size() == 0) return this;
+        const auto &type = col.dtype();
+
+        bool is_valid = same_type<T>(type.id());
+
+        if (!is_valid) {
+            LUISA_WARNING("APPLY SKIP: encouter different type -- COL_TYPE: {} <==> FUNC_TYPE: {}", type_id_string(type.id()), typeid(T).name());
+            return this;
+        }
+
+        type_dispatcher(type, apply_on_column{}, _device, _stream, col, reinterpret_cast<void *>(&apply_func));
+        
+        return this;
+    }
+
     void print_table() {
+        std::cout << "===================== START =====================\n";
         for (auto it = _columns.begin(); it != _columns.end(); ++it) {
             std::cout << it->first << ": ";
             type_dispatcher(it->second.dtype(), print_column{}, _stream, it->second);
         }
+        std::cout << "====================== END ======================\n";
     }
 };

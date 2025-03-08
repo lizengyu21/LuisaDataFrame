@@ -7,7 +7,9 @@
 #include <ludf/util/kernel.h>
 #include <ludf/io/read_csv.h>
 #include <random>
-
+#include <luisa/luisa-compute.h>
+#include <luisa/dsl/sugar.h>
+#include <luisa/dsl/syntax.h>
 
 using namespace luisa;
 using namespace luisa::compute;
@@ -107,15 +109,33 @@ int main(int argc, char *argv[]) {
     agg_op_map.insert({"loprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     agg_op_map.insert({"trdvol", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     // agg_op_map.insert({"opnprc", {AggeragateOp::SUM}});
-    for (int i = 0; i < 20; ++i) {
-        clock.tic();
-        // int th = 100;
-        table.query().group_by("id", agg_op_map);
-        LUISA_INFO("Time: {} ms", clock.toc());
-    }
+    // for (int i = 0; i < 20; ++i) {
+    //     clock.tic();
+    //     // int th = 100;
+    //     table.query().group_by("id", agg_op_map);
+    //     LUISA_INFO("Time: {} ms", clock.toc());
+    // }
     // int th = 100;
     clock.tic();
-    table.sort("id", SortOrder::Descending);
+    table.sort("id", SortOrder::Ascending);
+    Callable apply_func1 = [](Float a){
+        Float positive = def(0);
+        $if (a > 0) {
+            positive = def(1);
+        };
+        return positive;
+    };
+
+    Callable apply_func2 = [](UInt a){
+        UInt positive = def(0u);
+        $if (a > 5000000) {
+            positive = def(1);
+        };
+        return positive;
+    };
+
+    table.print_table();
+    table.apply("clsprc", apply_func1)->apply("trdvol", apply_func2);
     LUISA_INFO("Time: {} ms", clock.toc());
     table.print_table();
     

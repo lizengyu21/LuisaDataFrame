@@ -64,12 +64,23 @@ decltype(auto) type_dispatcher(const DataType &dtype, Functor f, Args&&... args)
 
 inline luisa::string agg_op_string(const AggeragateOp op) {
     switch (op) {
-    case AggeragateOp::SUM: return "SUM";
-    case AggeragateOp::MIN: return "MIN";
-    case AggeragateOp::MAX: return "MAX";
-    case AggeragateOp::COUNT: return "COUNT";
-    case AggeragateOp::MEAN: return "MEAN";
-    default: return "UNKNOWN";
+        case AggeragateOp::SUM: return "SUM";
+        case AggeragateOp::MIN: return "MIN";
+        case AggeragateOp::MAX: return "MAX";
+        case AggeragateOp::COUNT: return "COUNT";
+        case AggeragateOp::MEAN: return "MEAN";
+        default: return "UNKNOWN";
+    }
+}
+
+inline luisa::string type_id_string(const TypeId op) {
+    switch (op) {
+        case TypeId::EMPTY: return "NONE";
+        case TypeId::INT32: return "INT32";
+        case TypeId::UINT32: return "UINT32";
+        case TypeId::FLOAT32: return "FLOAT32";
+        case TypeId::TIMESTAMP: return "TIMESTAMP";
+        default: return "UNKNOWN";
     }
 }
 
