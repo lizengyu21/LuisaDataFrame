@@ -1,3 +1,5 @@
 luisa_dataframe_add_executable(test test.cpp)
+luisa_dataframe_add_executable(test_bitmap test_bitmap.cpp)
+luisa_dataframe_add_executable(test_join test_join.cpp)
 # luisa_dataframe_add_executable(main main.cpp)
 # luisa_dataframe_add_executable(test_env test_env.cpp)

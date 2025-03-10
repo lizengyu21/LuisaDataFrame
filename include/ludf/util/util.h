@@ -232,6 +232,8 @@ struct apply_on_column_Ret_T {
 BufferIndex inclusive_sum(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result);
 BufferBase unique_count(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result, BufferIndex &indices, uint num_group);
 
+luisa::compute::Buffer<luisa::compute::uint2> left_join();
+
 // template <class T>
 // BufferIndex make_filter_indices(Device &device, Stream &stream, const BufferView<T> &data, const FilterOp &op, const T &threshold) {
 //     AtomicQueue<uint> queue(device);

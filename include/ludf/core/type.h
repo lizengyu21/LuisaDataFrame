@@ -41,6 +41,13 @@ enum class SortOrder {
     Descending,
 };
 
+enum class JoinType {
+    INNER = 0,
+    LEFT,
+    RIGHT,
+    OUTER,
+};
+
 class DataType {
 public:
     TypeId _id;

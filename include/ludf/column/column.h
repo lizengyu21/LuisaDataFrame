@@ -2,12 +2,14 @@
 #include <ludf/core/type_dispatcher.h>
 #include <luisa/luisa-compute.h>
 #include <ludf/util/kernel.h>
+#include <ludf/core/bitmap.h>
 
 class Column {
     static const size_t stride = sizeof(BaseType);
 public:
     DataType _dtype;
     BufferBase _data;
+    Bitmap _null_mask;
 
     Column(DataType dtype = DataType{TypeId::EMPTY}) : _dtype(dtype) {}
     Column(BufferBase &&data, DataType dtype) : _dtype(dtype), _data(std::move(data)) {}
@@ -71,6 +73,7 @@ public:
             LUISA_ASSERT(_data.size_bytes() >= size, "unexpand and not enough data space.");
         }
         stream << _data.copy_from(data);
+        _null_mask.init_zero(device, stream, _data.size());
     }
 
     template <class T>

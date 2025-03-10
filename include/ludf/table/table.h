@@ -194,6 +194,27 @@ public:
         return this;
     }
 
+    Table *join(Table &other, const luisa::string &col_left, const luisa::string &col_right, const JoinType &join_type = JoinType::LEFT) {
+        if (_columns.find(col_left) == _columns.end() || other._columns.find(col_right) == other._columns.end()) {
+            LUISA_WARNING("JOIN SKIP: column not found. left: {}, right: {}", col_left, col_right);
+            return this;
+        }
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        Column &left_col = _columns[col_left];
+        Column &right_col = other._columns[col_right];
+
+        if (left_col.dtype() != right_col.dtype()) {
+            LUISA_WARNING("JOIN SKIP: column type not match. left: {}, right: {}", type_id_string(left_col.dtype().id()), type_id_string(right_col.dtype().id()));
+            return this;
+        }
+
+
+
+        return this;
+    }
+
     void print_table() {
         std::cout << "===================== START =====================\n";
         for (auto it = _columns.begin(); it != _columns.end(); ++it) {
