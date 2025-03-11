@@ -91,6 +91,14 @@
         "__mutex_base": "cpp",
         "__nullptr": "cpp",
         "__bit_reference": "cpp",
-        "__string": "cpp"
-    }
+        "__string": "cpp",
+        "__availability": "cpp",
+        "ios": "cpp",
+        "version": "cpp",
+        "__config": "cpp",
+        "__node_handle": "cpp",
+        "target": "cpp",
+        "filesystem": "cpp"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }

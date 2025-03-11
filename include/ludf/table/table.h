@@ -210,8 +210,26 @@ public:
             return this;
         }
 
+        auto type = left_col.dtype().id();
+        BufferIndex index_left, index_right;
 
+        // Buffer<JoinIndex> join_result;
+        if (join_type == JoinType::LEFT) {
+            std::tie(index_left, index_right) = type_dispatcher(type, left_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::RIGHT) {
+            std::tie(index_left, index_right) = type_dispatcher(type, right_join{}, _device, _stream, left_col, right_col);
+        } else {
+            std::cout << "Unsupport join type\n";
+            return this;
+        }
 
+        print_buffer(_stream, index_left.view());
+        print_buffer(_stream, index_right.view());
+        
+        luisa::unordered_map<luisa::string, Column> join_result;
+        fill_join_result(_device, _stream, index_left, this->_columns, join_result);
+        fill_join_result(_device, _stream, index_right, other._columns, join_result);
+        _columns = std::move(join_result);
         return this;
     }
 

@@ -8,6 +8,9 @@ using BufferIndex = luisa::compute::Buffer<uint>;
 using BaseType = int;
 using BufferBase = luisa::compute::Buffer<BaseType>;
 
+using JoinIndex = luisa::compute::uint2;
+
+constexpr uint UINT_NULL = 0u - 1u;
 // namespace lc = luisa::compute;
 
 enum class TypeId {

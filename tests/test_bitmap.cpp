@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
         size
     };
 
-    bitmap.init_one(device, stream, size);
+    // bitmap.init_one(device, stream, size);
 
     stream << test(bitmap).dispatch(size) << synchronize();
 

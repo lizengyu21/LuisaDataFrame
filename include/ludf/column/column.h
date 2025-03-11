@@ -13,6 +13,7 @@ public:
 
     Column(DataType dtype = DataType{TypeId::EMPTY}) : _dtype(dtype) {}
     Column(BufferBase &&data, DataType dtype) : _dtype(dtype), _data(std::move(data)) {}
+    Column(BufferBase &&data, Bitmap&& null_mask, DataType dtype) : _dtype(dtype), _data(std::move(data)), _null_mask(std::move(null_mask)) {}
     Column(Column &&) = default;
     Column(const Column &) = delete;
     Column &operator=(Column &&) = default;
@@ -73,7 +74,6 @@ public:
             LUISA_ASSERT(_data.size_bytes() >= size, "unexpand and not enough data space.");
         }
         stream << _data.copy_from(data);
-        _null_mask.init_zero(device, stream, _data.size());
     }
 
     template <class T>

@@ -4,10 +4,14 @@
 #include <ludf/util/kernel.h>
 #include <any>
 #include <luisa/backends/ext/cuda/lcub/device_radix_sort.h>
-
+#include <ludf/core/hashmap.h>
 
 template<class T>
 inline void print_buffer(luisa::compute::Stream &stream, const luisa::compute::BufferView<T> & buffer);
+
+BufferIndex inclusive_sum(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result);
+BufferIndex exclusive_sum(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result);
+BufferBase unique_count(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result, BufferIndex &indices, uint num_group);
 
 // template <class T>
 // BufferBase inverse_reindex(Device &device, Stream &stream, const BufferView<T> &data, const BufferViewIndex &indices, size_t res_size = 0) {
@@ -229,10 +233,95 @@ struct apply_on_column_Ret_T {
     }
 };
 
-BufferIndex inclusive_sum(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result);
-BufferBase unique_count(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result, BufferIndex &indices, uint num_group);
+struct left_join {
+    template <class T>
+    std::pair<BufferIndex, BufferIndex> operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &left, Column &right) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        // std::cout << "LEFT JOIN\n";
 
-luisa::compute::Buffer<luisa::compute::uint2> left_join();
+
+        auto left_data_view = left.view<T>();
+        auto right_data_view = right.view<T>();
+        BufferIndex join_count = device.create_buffer<uint>(left.size());
+        Bitmap match_mask;
+        match_mask.init_zero(device, stream, left.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(join_count, 0u).dispatch(left.size());
+        if (left._null_mask._data.size() == 0) left._null_mask.init_zero(device, stream, left.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+        if (right._null_mask._data.size() == 0) right._null_mask.init_zero(device, stream, right.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+
+
+        stream << ShaderCollector<T>::get_instance(device)->join_count_shader(left_data_view, right_data_view, join_count, left._null_mask, right._null_mask, match_mask).dispatch(luisa::compute::make_uint2(left.size(), right.size()));
+
+        // print_buffer(stream, join_count.view());
+
+        Buffer<uint> total_rows_buffer = device.create_buffer<uint>(1);
+        uint total_rows; 
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(total_rows_buffer, 0u).dispatch(1)
+               << ShaderCollector<uint>::get_instance(device)->sum_shader(join_count, left._null_mask, total_rows_buffer).dispatch(left.size())
+               << total_rows_buffer.copy_to(&total_rows) << synchronize();
+
+        // print_buffer(stream, join_count.view());
+        // print_buffer(stream, total_rows_buffer.view());
+
+        Buffer<uint> result_left = device.create_buffer<uint>(total_rows);
+        Buffer<uint> result_right = device.create_buffer<uint>(total_rows);
+        auto result_index_start = exclusive_sum(device, stream, join_count);
+        BufferIndex slot_pointer = device.create_buffer<uint>(left.size());
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(slot_pointer, 0u).dispatch(left.size());
+
+        // print_buffer(stream, result_index_start.view());
+
+        stream << ShaderCollector<T>::get_instance(device)->join_reindex_shader(
+            left_data_view, right_data_view, left._null_mask, right._null_mask, match_mask, result_index_start, slot_pointer, result_left, result_right).dispatch(luisa::compute::make_uint2(left.size(), right.size()));
+
+        stream << ShaderCollector<T>::get_instance(device)->join_match_mask_filter_shader(match_mask, left._null_mask, result_index_start, result_left, result_right).dispatch(left.size());
+
+        return std::make_pair(std::move(result_left), std::move(result_right));
+    }
+};
+
+struct right_join {
+    template <class T>
+    std::pair<BufferIndex, BufferIndex> operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &left, Column &right) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        BufferIndex l;
+        BufferIndex r;
+        std::tie(r, l) = left_join{}.operator()<T>(device, stream, right, left);
+        return std::make_pair(std::move(l), std::move(r));
+    }
+};
+
+struct join_reindex_col {
+    template <class T>
+    Column operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &indices, Column &data) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        BufferView<T> data_view = data.view<T>();
+        BufferBase res_buf = device.create_buffer<BaseType>(indices.size() * sizeof(T) / sizeof(BaseType));
+        Bitmap null_mask;
+        null_mask.init_zero(device, stream, indices.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+        if (data._null_mask._data.size() == 0) data._null_mask.init_zero(device, stream, data.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+        
+        stream << ShaderCollector<T>::get_instance(device)->reindex_with_nullmask_shader(res_buf.view().as<T>(), data_view, indices, data._null_mask, null_mask).dispatch(indices.size());
+        return Column{std::move(res_buf), data.dtype()};
+    }
+};
+
+
+void inline fill_join_result(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &indices, luisa::unordered_map<luisa::string, Column> &data, luisa::unordered_map<luisa::string, Column> &result) {
+    for (auto it = data.begin(); it != data.end(); ++it) {
+        auto name = it->first;
+        if (result.find(name) != result.end()) {
+            LUISA_WARNING("JOIN INTERUPT: Join two table should NOT have the same column name [{}]", name);
+            return;
+        }
+        auto res_col = type_dispatcher(it->second.dtype().id(), join_reindex_col{}, device, stream, indices, it->second);
+        result.insert({name, std::move(res_col)});
+    }
+}
 
 // template <class T>
 // BufferIndex make_filter_indices(Device &device, Stream &stream, const BufferView<T> &data, const FilterOp &op, const T &threshold) {
