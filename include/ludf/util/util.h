@@ -49,6 +49,13 @@ struct inverse_reindex {
         auto dst_view = res_buf.view().as<T>();
         auto src_view = data.view<T>();
         stream << ShaderCollector<T>::get_instance(device)->inverse_reindex_shader(dst_view, src_view, indices).dispatch(indices.size());
+
+        if (data._null_mask._data.size() != 0) {
+            Bitmap null_mask;
+            null_mask.init_zero(device, stream, indices.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+            stream << ShaderCollector<T>::get_instance(device)->inverse_reindex_bitmap_shader(null_mask, data._null_mask, indices).dispatch(indices.size());
+            data._null_mask = std::move(null_mask);
+        }
         data.load(std::move(res_buf));
     }
 };
@@ -100,7 +107,10 @@ struct make_inverse_reindex {
         BufferIndex counter = device.create_buffer<uint>(1);
         stream << ShaderCollector<id_to_type<TypeId::UINT32>>::get_instance(device)->reset_shader(counter).dispatch(1);
         T thres = std::any_cast<T>(threshold);
-        stream << ShaderCollector<T>::get_instance(device)->make_inverse_reindex_shader_map[op](indices, counter, data.view<T>(), thres).dispatch(data.size());
+
+        if (data._null_mask._data.size() == 0) data._null_mask.init_zero(device, stream, data.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+
+        stream << ShaderCollector<T>::get_instance(device)->make_inverse_reindex_shader_map[op](indices, counter, data.view<T>(), data._null_mask, thres).dispatch(data.size());
         uint count;
         stream << counter.copy_to(&count) << synchronize();
         if (count == 0) {
@@ -108,6 +118,7 @@ struct make_inverse_reindex {
         }
         BufferIndex res = device.create_buffer<uint>(count);
         stream << ShaderCollector<uint>::get_instance(device)->copy_shader(res, indices).dispatch(count);
+        print_buffer(stream, res.view());
         return std::move(res);
     }
 };

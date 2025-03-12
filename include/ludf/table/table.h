@@ -237,63 +237,6 @@ public:
 
     void print_table() {
         printer.load(_device, _stream, _columns);
-        printer.print();
-        // std::cout << "===================== START =====================\n";
-        // for (auto it = _columns.begin(); it != _columns.end(); ++it) {
-        //     std::cout << it->first << ": ";
-        //     type_dispatcher(it->second.dtype(), print_column{}, _stream, it->second);
-        // }
-        // std::cout << "====================== END ======================\n";
+        printer.print(40);
     }
-
-    // void print_table_mysql() {
-    //     std::cout << "===================== START =====================\n";
-    
-    //     // 获取最大列宽
-    //     luisa::unordered_map<luisa::string, size_t> column_widths;
-    //     for (const auto &col : _columns) {
-    //         for (const auto &val : col.second) {
-    //             column_widths[col.first] = std::max(column_widths[col.first], std::to_string(val).size());
-    //         }
-    //     }
-    
-    //     // 打印表头
-    //     std::cout << "+";
-    //     for (const auto &col : _columns) {
-    //         std::cout << std::setw(column_widths[col.first] + 2) << std::setfill('-') << "+"; 
-    //     }
-    //     std::cout << std::endl;
-    
-    //     std::cout << "|";
-    //     for (const auto &col : _columns) {
-    //         std::cout << " " << std::setw(column_widths[col.first]) << std::setfill(' ') << col.first << " |";
-    //     }
-    //     std::cout << std::endl;
-    
-    //     std::cout << "+";
-    //     for (const auto &col : _columns) {
-    //         std::cout << std::setw(column_widths[col.first] + 2) << std::setfill('-') << "+"; 
-    //     }
-    //     std::cout << std::endl;
-    
-    //     // 打印数据
-    //     size_t row_count = _columns.begin()->second.size();
-    //     for (size_t i = 0; i < row_count; ++i) {
-    //         std::cout << "|";
-    //         for (const auto &col : _columns) {
-    //             std::cout << " " << std::setw(column_widths[col.first]) << std::setfill(' ') << col.second[i] << " |";
-    //         }
-    //         std::cout << std::endl;
-    //     }
-    
-    //     std::cout << "+";
-    //     for (const auto &col : _columns) {
-    //         std::cout << std::setw(column_widths[col.first] + 2) << std::setfill('-') << "+"; 
-    //     }
-    //     std::cout << std::endl;
-    
-    //     std::cout << "====================== END ======================\n";
-    // }
-    
-
 };

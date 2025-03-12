@@ -16,9 +16,9 @@ private:
 
         if (make_inverse_reindex_shader_map.find(op) != make_inverse_reindex_shader_map.end()) return;
 
-        auto shader = device.compile<1>([&](BufferUInt indices, BufferUInt counter, BufferVar<T> data, Var<T> threshold){
+        auto shader = device.compile<1>([&](BufferUInt indices, BufferUInt counter, BufferVar<T> data, Var<Bitmap> null_mask, Var<T> threshold){
             auto x = dispatch_x(); 
-            auto pred = filter(data.read(x), threshold);
+            auto pred = filter(data.read(x), threshold) & !null_mask->test(x);
             Shared<uint> index{1}; 
             $if (thread_x() == 0u) { index.write(0u, 0u); }; 
             sync_block(); 
@@ -71,6 +71,19 @@ private:
             // dst:    x
             auto x = dispatch_x();
             dst.write(x, src.read(idx.read(x)));
+        });
+        inverse_reindex_bitmap_shader = device.compile<1>([](Var<Bitmap> dst, Var<Bitmap> src, BufferVar<uint> idx){
+            // dst[x] = src[idx[x]];
+            // src: idx[x]
+            //         |
+            //         "
+            // dst:    x
+            auto x = dispatch_x();
+            $if (src->test(idx.read(x))) {
+                dst->set(x);
+            } $else {
+                dst->clear(x);
+            };
         });
         arange_shader = device.compile<1>([](BufferVar<T> data){
             auto x = dispatch_x();
@@ -227,7 +240,8 @@ public:
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> copy_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex> reindex_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex> inverse_reindex_shader;
-    luisa::unordered_map<FilterOp, luisa::compute::Shader1D<BufferIndex, luisa::compute::Buffer<uint>, luisa::compute::Buffer<T>, T>> make_inverse_reindex_shader_map;
+    luisa::compute::Shader1D<Bitmap, Bitmap, BufferIndex> inverse_reindex_bitmap_shader;
+    luisa::unordered_map<FilterOp, luisa::compute::Shader1D<BufferIndex, luisa::compute::Buffer<uint>, luisa::compute::Buffer<T>, Bitmap, T>> make_inverse_reindex_shader_map;
     luisa::unordered_map<AggeragateOp, luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex, uint, T>> aggregate_shader_map;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>> arange_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, BufferIndex> adjacent_diff_shader;

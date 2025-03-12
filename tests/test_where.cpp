@@ -13,7 +13,7 @@
 
 using namespace luisa;
 using namespace luisa::compute;
-
+// using namespace luisa::compute::cuda::lcub;
 
 template <typename T>
 vector<T> createRandomVector(size_t size, T minValue, T maxValue, unsigned int seed) {
@@ -60,62 +60,41 @@ int main(int argc, char *argv[]) {
     Stream stream = device.create_stream();
     Clock clock;
 
-    auto set_bit = device.compile<1>([](Var<Bitmap> bitmap) {
-        auto x = dispatch_x();
-        bitmap->set(x);
-    });
-
     Table table(device, stream);
-    // table.create_column("id", TypeId::INT32);
-    // table.append_column("id", vector<int>{1, 1, 2, 3});
-    // table.create_column("opnprc", TypeId::FLOAT32);
-    // table.append_column("opnprc", vector<float>{1561.156486, 1.5, 2.5, 3.5});
+
+    // read_csv("data/TRD_Dalyr0.csv", table);
 
     uint seed = 0;
     uint size = std::stoi(argv[2]);
-    auto id1_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[3]), seed);
+    auto id_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[3]), seed);
     table.create_column("id", TypeId::INT32);
-    table.append_column("id", id1_vec);
+    table.append_column("id", id_vec);
 
-    auto opnprc_vec = createRandomVector<float>(size, 0, 10, seed + 20);
+    auto opnprc_vec = createRandomVector<int32_t>(size, 0, 1, seed + 20);
     table.create_column("opnprc", TypeId::FLOAT32);
     table.append_column("opnprc", opnprc_vec);
 
-    table._columns["opnprc"]._null_mask.init_zero(device, stream, table._columns["opnprc"].size(), ShaderCollector<uint>::get_instance(device)->set_shader);
-    stream << set_bit(table._columns["opnprc"]._null_mask).dispatch(2) << synchronize();
-    print_buffer(stream, table._columns["opnprc"]._null_mask._data.view());
+    auto clsprc_vec = createRandomVector<float>(size, -100, 100, seed + 1);
+    table.create_column("clsprc", TypeId::FLOAT32);
+    table.append_column("clsprc", clsprc_vec);
+
+    table.print_table();
+
+    table.where("id", FilterOp::LESS_EQUAL, std::stoi(argv[4]));
+
+    table.print_table();
+    
+    // int64_t th = std::stoi(argv[2]);
+    // // long long th2 = std::stoi(argv[3]);
+    // // for (int i = 0; i < 100; ++i) {
+    // //     clock.tic();
+    // //     table.query().where("id", FilterOp::LESS, &th);
+    // //     LUISA_INFO("Time: {} ms", clock.toc());
+    // // }
+    // table.where("id", FilterOp::LESS, &th);
 
     // table.print_table();
 
-
-    Table table2(device, stream);
-    // table2.create_column("id2", TypeId::INT32);
-    // table2.append_column("id2", vector<int>{2, 2, 3, 4, 4});
-    // table2.create_column("clsprc", TypeId::FLOAT32);
-    // table2.append_column("clsprc", vector<float>{1.8, 2.8, 3.8, 4.8, 5.8});
-
-    seed = 10;
-    size = std::stoi(argv[4]);
-    auto id_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[5]), seed);
-    table2.create_column("id2", TypeId::INT32);
-    table2.append_column("id2", id_vec);
-    auto clsprc_vec = createRandomVector<float>(size, 0, 10, seed + 20);
-    table2.create_column("clsprc", TypeId::FLOAT32);
-    table2.append_column("clsprc", clsprc_vec);
-
-    table2._columns["clsprc"]._null_mask.init_zero(device, stream, table2._columns["clsprc"].size(), ShaderCollector<uint>::get_instance(device)->set_shader);
-    stream << set_bit(table2._columns["clsprc"]._null_mask).dispatch(1) << synchronize();
-    print_buffer(stream, table2._columns["clsprc"]._null_mask._data.view());
-
-    // table2.print_table();
-
-    clock.tic();
-    table.join(table2, "id", "id2", JoinType::LEFT);
-    LUISA_INFO("join in {} ms", clock.toc());
-    table.print_table();
-    table.where("opnprc", FilterOp::GREATER_EQUAL, 7.0f);
-
-    table.print_table();
-
+    // print_buffer(stream, res.view().as<int>());
     std::cout << "End.\n";
 }
