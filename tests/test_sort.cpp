@@ -80,21 +80,9 @@ int main(int argc, char *argv[]) {
 
     table.print_table();
 
-    table.where("id", FilterOp::LESS_EQUAL, std::stoi(argv[4]));
+    table.sort(argv[4], SortOrder::Ascending);
 
     table.print_table();
-    
-    // int64_t th = std::stoi(argv[2]);
-    // // long long th2 = std::stoi(argv[3]);
-    // // for (int i = 0; i < 100; ++i) {
-    // //     clock.tic();
-    // //     table.query().where("id", FilterOp::LESS, &th);
-    // //     LUISA_INFO("Time: {} ms", clock.toc());
-    // // }
-    // table.where("id", FilterOp::LESS, &th);
 
-    // table.print_table();
-
-    // print_buffer(stream, res.view().as<int>());
     std::cout << "End.\n";
 }

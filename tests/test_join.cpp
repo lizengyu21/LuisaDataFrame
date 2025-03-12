@@ -113,7 +113,8 @@ int main(int argc, char *argv[]) {
     table.join(table2, "id", "id2", JoinType::LEFT);
     LUISA_INFO("join in {} ms", clock.toc());
     table.print_table();
-    table.where("opnprc", FilterOp::GREATER_EQUAL, 7.0f);
+    // table.where("opnprc", FilterOp::GREATER_EQUAL, 7.0f);
+    table.sort(argv[6], SortOrder::Ascending);
 
     table.print_table();
 

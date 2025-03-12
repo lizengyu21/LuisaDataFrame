@@ -50,6 +50,12 @@ private:
         set_shader = device.compile<1>([](BufferVar<T> counter, Var<T> value) {
             counter.write(dispatch_x(), value);
         });
+        filter_set_shader = device.compile<1>([](BufferVar<T> counter, Var<Bitmap> null_mask, Var<T> value) {
+            auto x = dispatch_x();
+            $if (null_mask->test(x)) {
+                counter.write(x, value);
+            };
+        });
         copy_shader = device.compile<1>([](BufferVar<T> dst, BufferVar<T> src) {
             auto x = dispatch_x();
             dst.write(x, src.read(x));
@@ -237,6 +243,7 @@ public:
 
     luisa::compute::Shader1D<luisa::compute::Buffer<T>> reset_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, T> set_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, T> filter_set_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> copy_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex> reindex_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex> inverse_reindex_shader;

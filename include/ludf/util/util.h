@@ -137,6 +137,11 @@ struct sort_column {
         BufferBase data_out = device.create_buffer<BaseType>(num_item * sizeof(T) / sizeof(BaseType));
         stream << ShaderCollector<uint>::get_instance(device)->arange_shader(indices_in).dispatch(num_item) << synchronize();
 
+        if (data._null_mask._data.size() != 0) {
+            if (order == SortOrder::Ascending) stream << ShaderCollector<T>::get_instance(device)->filter_set_shader(data_in_view, data._null_mask, std::numeric_limits<T>::max()).dispatch(num_item);
+            else stream << ShaderCollector<T>::get_instance(device)->filter_set_shader(data_in_view, data._null_mask, std::numeric_limits<T>::lowest()).dispatch(num_item);
+        }
+
         Buffer<int> temp_storage;
         size_t temp_storage_size = -1;
 
@@ -148,6 +153,13 @@ struct sort_column {
         else stream << DeviceRadixSort::SortPairsDescending(temp_storage, data_in_view, data_out.view().as<T>(), indices_in.view(), indices_out.view(), num_item);
         
         sorted_result.load(std::move(data_out));
+
+        if (data._null_mask._data.size() != 0) {
+            Bitmap null_mask;
+            null_mask.init_zero(device, stream, num_item, ShaderCollector<uint>::get_instance(device)->set_shader);
+            stream << ShaderCollector<T>::get_instance(device)->inverse_reindex_bitmap_shader(null_mask, data._null_mask, indices_out).dispatch(indices_out.size());
+            sorted_result._null_mask = std::move(null_mask);
+        }
 
         return std::move(indices_out);
     }
