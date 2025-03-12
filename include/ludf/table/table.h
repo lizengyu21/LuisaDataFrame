@@ -5,10 +5,12 @@
 #include <ludf/util/util.h>
 #include <any>
 #include <typeinfo>
+#include <ludf/util/printer.h>
 
 class Table {
     luisa::compute::Device &_device;
     luisa::compute::Stream &_stream;
+    Printer printer;
 
     void create_column(const luisa::string &name, Column &&col) {
         if (_columns.find(name) != _columns.end()) return;
@@ -223,8 +225,8 @@ public:
             return this;
         }
 
-        print_buffer(_stream, index_left.view());
-        print_buffer(_stream, index_right.view());
+        // print_buffer(_stream, index_left.view());
+        // print_buffer(_stream, index_right.view());
         
         luisa::unordered_map<luisa::string, Column> join_result;
         fill_join_result(_device, _stream, index_left, this->_columns, join_result);
@@ -234,12 +236,14 @@ public:
     }
 
     void print_table() {
-        std::cout << "===================== START =====================\n";
-        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
-            std::cout << it->first << ": ";
-            type_dispatcher(it->second.dtype(), print_column{}, _stream, it->second);
-        }
-        std::cout << "====================== END ======================\n";
+        printer.load(_device, _stream, _columns);
+        printer.print();
+        // std::cout << "===================== START =====================\n";
+        // for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+        //     std::cout << it->first << ": ";
+        //     type_dispatcher(it->second.dtype(), print_column{}, _stream, it->second);
+        // }
+        // std::cout << "====================== END ======================\n";
     }
 
     // void print_table_mysql() {

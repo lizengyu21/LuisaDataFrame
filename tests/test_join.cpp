@@ -66,16 +66,20 @@ int main(int argc, char *argv[]) {
     });
 
     Table table(device, stream);
-    table.create_column("id", TypeId::INT32);
-    table.append_column("id", vector<int>{1, 1, 2, 3});
-    table.create_column("opnprc", TypeId::FLOAT32);
-    table.append_column("opnprc", vector<float>{0.5, 1.5, 2.5, 3.5});
-
-    // uint seed = 0;
-    // uint size = std::stoi(argv[2]);
-    // auto id1_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[3]), seed);
     // table.create_column("id", TypeId::INT32);
-    // table.append_column("id", id1_vec);
+    // table.append_column("id", vector<int>{1, 1, 2, 3});
+    // table.create_column("opnprc", TypeId::FLOAT32);
+    // table.append_column("opnprc", vector<float>{1561.156486, 1.5, 2.5, 3.5});
+
+    uint seed = 0;
+    uint size = std::stoi(argv[2]);
+    auto id1_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[3]), seed);
+    table.create_column("id", TypeId::INT32);
+    table.append_column("id", id1_vec);
+
+    auto opnprc_vec = createRandomVector<float>(size, 0, 10, seed + 20);
+    table.create_column("opnprc", TypeId::FLOAT32);
+    table.append_column("opnprc", opnprc_vec);
 
     table._columns["opnprc"]._null_mask.init_zero(device, stream, table._columns["opnprc"].size(), ShaderCollector<uint>::get_instance(device)->set_shader);
     stream << set_bit(table._columns["opnprc"]._null_mask).dispatch(2) << synchronize();
@@ -83,17 +87,21 @@ int main(int argc, char *argv[]) {
 
     table.print_table();
 
-    Table table2(device, stream);
-    table2.create_column("id2", TypeId::INT32);
-    table2.append_column("id2", vector<int>{2, 2, 3, 4, 4});
-    table2.create_column("clsprc", TypeId::FLOAT32);
-    table2.append_column("clsprc", vector<float>{1.8, 2.8, 3.8, 4.8, 5.8});
 
-    // seed = 10;
-    // size = std::stoi(argv[4]);
-    // auto id_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[5]), seed);
+    Table table2(device, stream);
     // table2.create_column("id2", TypeId::INT32);
-    // table2.append_column("id2", id_vec);
+    // table2.append_column("id2", vector<int>{2, 2, 3, 4, 4});
+    // table2.create_column("clsprc", TypeId::FLOAT32);
+    // table2.append_column("clsprc", vector<float>{1.8, 2.8, 3.8, 4.8, 5.8});
+
+    seed = 10;
+    size = std::stoi(argv[4]);
+    auto id_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[5]), seed);
+    table2.create_column("id2", TypeId::INT32);
+    table2.append_column("id2", id_vec);
+    auto clsprc_vec = createRandomVector<float>(size, 0, 10, seed + 20);
+    table2.create_column("clsprc", TypeId::FLOAT32);
+    table2.append_column("clsprc", clsprc_vec);
 
     table2._columns["clsprc"]._null_mask.init_zero(device, stream, table2._columns["clsprc"].size(), ShaderCollector<uint>::get_instance(device)->set_shader);
     stream << set_bit(table2._columns["clsprc"]._null_mask).dispatch(1) << synchronize();
@@ -102,7 +110,7 @@ int main(int argc, char *argv[]) {
     table2.print_table();
 
     clock.tic();
-    table.join(table2, "id", "id2", JoinType::RIGHT);
+    table.join(table2, "id", "id2", JoinType::LEFT);
     LUISA_INFO("join in {} ms", clock.toc());
     table.print_table();
     stream << synchronize();

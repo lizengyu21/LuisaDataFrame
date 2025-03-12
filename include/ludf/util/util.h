@@ -306,7 +306,7 @@ struct join_reindex_col {
         if (data._null_mask._data.size() == 0) data._null_mask.init_zero(device, stream, data.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
         
         stream << ShaderCollector<T>::get_instance(device)->reindex_with_nullmask_shader(res_buf.view().as<T>(), data_view, indices, data._null_mask, null_mask).dispatch(indices.size());
-        return Column{std::move(res_buf), data.dtype()};
+        return Column{std::move(res_buf), std::move(null_mask), data.dtype()};
     }
 };
 
