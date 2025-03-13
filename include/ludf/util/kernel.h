@@ -138,7 +138,7 @@ private:
         sum_to_mean_shader = device.compile<1>([](BufferVar<T> sum_data, Var<Bitmap> null_mask, BufferVar<uint> count_data, BufferVar<float> mean_data){
             auto x = dispatch_x();
             $if (!null_mask->test(x)) {
-                device_log("divide {}", count_data.read(x));
+                // device_log("divide {}", count_data.read(x));
                 mean_data.write(x, cast<float>(sum_data.read(x)) / cast<float>(count_data.read(x)));
             };
         });
