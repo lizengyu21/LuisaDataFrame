@@ -211,7 +211,7 @@ struct aggregate_column {
             
             T init_value = op == AggeragateOp::MAX ? std::numeric_limits<T>::lowest() : 
                            op == AggeragateOp::MIN ? std::numeric_limits<T>::max() : static_cast<T>(0);
-                           
+
             stream << ShaderCollector<T>::get_instance(device)->set_shader(res_buf.view().as<T>(), init_value).dispatch(num_group);
             stream << ShaderCollector<T>::get_instance(device)->aggregate_shader_map[op](data_view, data._null_mask, res_buf.view().as<T>(), null_mask, indices, indices.size(), init_value).dispatch(indices.size());
             return Column{std::move(res_buf), data.dtype()};

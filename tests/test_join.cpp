@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
     clock.tic();
     table.query().group_by(argv[6], agg_op_map)->print_table();
     LUISA_INFO("group by in {} ms", clock.toc());
-    table.print_table();
+    // table.print_table();
 
     std::cout << "End.\n";
 }

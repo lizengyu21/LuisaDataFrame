@@ -242,9 +242,21 @@ private:
                         block_sum.atomic(block_sum_id).fetch_##type(data.read(x)); \
                     }; \
                     sync_block(); \
-                    $if (indices.read(x) != UINT_NULL) { \
+                    $if (block_end_index.read(0u) != UINT_NULL) { \
                         $if (thread_x() + block_start_index.read(0u) <= block_end_index.read(0u)) { \
                             result.atomic(thread_x() + block_start_index.read(0u)).fetch_##type(block_sum.read(thread_x())); \
+                        }; \
+                    } $else { \
+                        $if (x != 0) { \
+                            $if (indices.read(x) == UINT_NULL & indices.read(x - 1) != UINT_NULL) { \
+                                block_end_index.write(0u, indices.read(x - 1)); \
+                            }; \
+                        }; \
+                        sync_block(); \
+                        $if (indices.read(x) != UINT_NULL) { \
+                            $if (thread_x() + block_start_index.read(0u) <= block_end_index.read(0u)) { \
+                                result.atomic(thread_x() + block_start_index.read(0u)).fetch_##type(block_sum.read(thread_x())); \
+                            }; \
                         }; \
                     }; \
                 })

@@ -113,15 +113,14 @@ public:
             const auto &current_col_type = current_col.dtype();
 
             type_dispatcher(current_col_type, inverse_reindex{}, _device, _stream, current_col, indices);
-
             for (const auto &agg_op : it->second) {
                 string new_col_name = agg_op_string(agg_op) + "(" + current_col_name + ")";
                 // print_buffer(_stream, current_col._null_mask._data.view());
                 auto res_col = type_dispatcher(current_col_type, aggregate_column{}, _device, _stream, current_col, agg_op, inclusive_sum_result, num_group);
-                
                 res_col._null_mask.init_zero(_device, _stream, num_group, ShaderCollector<uint>::get_instance(_device)->set_shader);
+
                 _stream << ShaderCollector<uint>::get_instance(_device)->reindex_bitmap_with_null_shader(res_col._null_mask, current_col._null_mask, inclusive_sum_result).dispatch(current_col.size());
-                
+
                 if (each_group_count.size() == 0 && (agg_op == AggeragateOp::MEAN || agg_op == AggeragateOp::COUNT)) {
                     each_group_count = unique_count(_device, _stream, adjacent_diff_result, inclusive_sum_result, num_group);
                 }
@@ -136,6 +135,7 @@ public:
                 if (agg_op == AggeragateOp::COUNT) {
                     res_col.load(_device, _stream, each_group_count);
                 }
+
 
                 res_columns.insert({new_col_name, std::move(res_col)});
             }

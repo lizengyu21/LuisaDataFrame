@@ -43,17 +43,28 @@ int main(int argc, char *argv[]) {
     };
     read_csv("./data/TRD_Dalyr0.csv", table, type);
     read_csv("./data/TRD_Dalyr1.csv", table, type);
+    read_csv("./data/TRD_Dalyr2.csv", table, type);
+    read_csv("./data/TRD_Dalyr3.csv", table, type);
+    read_csv("./data/TRD_Dalyr4.csv", table, type);
+    read_csv("./data/TRD_Dalyr5.csv", table, type);
     LUISA_INFO("load csv data in {} ms", clock.toc());
 
     table.print_table();
 
+    auto agg_op_map = unordered_map<string, vector<AggeragateOp>>();
+    // agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    agg_op_map.insert({"Clsprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    agg_op_map.insert({"Opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+
     while (true) {
-        std::string cmd;
+        std::string cmd, col;
         std::cin >> cmd;
         auto t = table.query();
         clock.tic();
-        t.where("Stkcd", FilterOp::LESS_EQUAL, std::stoi(cmd));
-        LUISA_INFO("where in {} ms", clock.toc());
+        t.where("Stkcd", FilterOp::LESS_EQUAL, std::stoi(cmd))
+            ->group_by("Stkcd", agg_op_map)
+            ->sort("Stkcd", SortOrder::Descending);
+        LUISA_INFO("where & sort in {} ms", clock.toc());
         t.print_table();
     }
     
