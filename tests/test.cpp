@@ -99,18 +99,18 @@ int main(int argc, char *argv[]) {
 
     // // auto tab = table.query();
 
-    table.print_table();
+    // table.print_table();
 
     auto agg_op_map = unordered_map<string, vector<AggeragateOp>>();
 
     agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     agg_op_map.insert({"clsprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    agg_op_map.insert({"hiprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    agg_op_map.insert({"loprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    agg_op_map.insert({"trdvol", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    // agg_op_map.insert({"hiprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    // agg_op_map.insert({"loprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    // agg_op_map.insert({"trdvol", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
 
     clock.tic();
-    table.sort("id", SortOrder::Ascending);
+    // table.sort("id", SortOrder::Ascending);
     
     Callable apply_func1 = [](Float a){
         UInt positive = def(0);
@@ -129,12 +129,13 @@ int main(int argc, char *argv[]) {
     };
 
     table.print_table();
-    table.apply("clsprc", apply_func1);
+    // table.apply("clsprc", apply_func1);
+    table.group_by("id", agg_op_map);
     // LUISA_INFO("Time: {} ms", clock.toc());
     table.print_table();
     // table.apply("clsprc", apply_func1);
-    table.apply("clsprc", apply_func2);
-    table.print_table();
+    // table.apply("clsprc", apply_func2);
+    // table.print_table();
     
     // int64_t th = std::stoi(argv[2]);
     // // long long th2 = std::stoi(argv[3]);
