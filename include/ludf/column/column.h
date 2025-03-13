@@ -43,7 +43,15 @@ public:
     Column clone(luisa::compute::Device &device, luisa::compute::Stream &stream) const {
         BufferBase t = device.create_buffer<BaseType>(_data.size());
         stream << t.copy_from(_data);
-        return std::move(Column{std::move(t), _dtype});
+
+        Bitmap null_mask;
+        if (_null_mask._data.size() != 0) {
+            null_mask._data = device.create_buffer<uint>(_null_mask._data.size());
+            stream << null_mask._data.copy_from(_null_mask._data);
+            null_mask._size = _null_mask._size;
+        }
+
+        return std::move(Column{std::move(t), std::move(null_mask), _dtype});
     }
 
     void resize(luisa::compute::Device &device, luisa::compute::Stream &stream, size_t size_byte) {

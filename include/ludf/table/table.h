@@ -42,11 +42,16 @@ public:
         
     }
 
-    void append_column(const luisa::string &name, void *data, size_t size) {
+    void append_column(const luisa::string &name, void *data, size_t size_byte) {
+        if (_columns.find(name) == _columns.end()) {
+            LUISA_WARNING("APPEND COLUMN SKIP: column not found. name: {}", name);
+            return;
+        }
+        if (size_byte == 0) return;
         Column &col = _columns[name];
         const auto &type = col.dtype();
         Column data_col{type};
-        data_col.load(_device, _stream, data, size, true);
+        data_col.load(_device, _stream, data, size_byte, true);
         type_dispatcher(type, concat_column{}, _device, _stream, col, data_col);
     }
 

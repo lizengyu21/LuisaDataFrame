@@ -32,7 +32,33 @@ int main(int argc, char *argv[]) {
 
     Table table(device, stream);
 
-    read_csv("./data/TRD_Dalyr0.csv", table);
+    clock.tic();
+    unordered_map<string, TypeId> type = {
+        {"Stkcd", TypeId::INT32},
+        {"Trddt", TypeId::TIMESTAMP},
+        {"Opnprc", TypeId::FLOAT32},
+        {"Hiprc", TypeId::FLOAT32},
+        {"Loprc", TypeId::FLOAT32},
+        {"Clsprc", TypeId::FLOAT32}
+    };
+    read_csv("./data/TRD_Dalyr0.csv", table, type);
+    read_csv("./data/TRD_Dalyr1.csv", table, type);
+    LUISA_INFO("load csv data in {} ms", clock.toc());
+
+    table.print_table();
+
+    while (true) {
+        std::string cmd;
+        std::cin >> cmd;
+        auto t = table.query();
+        clock.tic();
+        t.where("Stkcd", FilterOp::LESS_EQUAL, std::stoi(cmd));
+        LUISA_INFO("where in {} ms", clock.toc());
+        t.print_table();
+    }
+    
+
+    // table.print_table();
 
     std::cout << "End.\n";
 }

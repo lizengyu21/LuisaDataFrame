@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
     table.create_column("id", TypeId::INT32);
     table.append_column("id", id1_vec);
 
-    auto opnprc_vec = createRandomVector<float>(size, -100, 100, seed + 20);
+    auto opnprc_vec = createRandomVector<float>(size, 1, 1, seed + 20);
     table.create_column("opnprc", TypeId::FLOAT32);
     table.append_column("opnprc", opnprc_vec);
 
@@ -99,7 +99,7 @@ int main(int argc, char *argv[]) {
     auto id_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[5]), seed);
     table2.create_column("id2", TypeId::INT32);
     table2.append_column("id2", id_vec);
-    auto clsprc_vec = createRandomVector<float>(size, 0, 10, seed + 20);
+    auto clsprc_vec = createRandomVector<float>(size, 1.5, 1.5, seed + 20);
     table2.create_column("clsprc", TypeId::FLOAT32);
     table2.append_column("clsprc", clsprc_vec);
 
@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
     agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     // agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN}});
     clock.tic();
-    table.group_by(argv[6], agg_op_map);
+    table.query().group_by(argv[6], agg_op_map)->print_table();
     LUISA_INFO("group by in {} ms", clock.toc());
     table.print_table();
 

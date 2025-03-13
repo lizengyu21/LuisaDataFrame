@@ -39,7 +39,10 @@ struct Printer {
 
     void load(luisa::compute::Device &device, luisa::compute::Stream &stream, luisa::unordered_map<luisa::string, Column> &_columns) {
         clear();
-        if (_columns.begin() == _columns.end()) return;
+        if (_columns.empty()) {
+            len = 0;
+            return;
+        }
         len = _columns.begin()->second.size();
         for (auto &it : _columns) {
             if(it.second.size() != len) {
@@ -50,6 +53,9 @@ struct Printer {
         for (auto &it : _columns) {
             
             col_type[it.first] = it.second.dtype().id();
+            if (len == 0) {
+                continue;
+            }
             col_null_mask[it.first] = luisa::vector<uint>(it.second._null_mask._data.size());
             auto size = len * id_to_size(it.second.dtype().id());
 
@@ -151,7 +157,7 @@ struct Printer {
             }
             std::cout << "|\n";
         }
-        border(col_max_len);
+        if (print_len != 0) border(col_max_len);
     }
 
     struct print_value {

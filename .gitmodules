@@ -1,3 +1,6 @@
 [submodule "ext/LuisaCompute"]
 	path = ext/LuisaCompute
 	url = https://github.com/LuisaGroup/LuisaCompute.git
+[submodule "ext/csv-parser"]
+	path = ext/csv-parser
+	url = https://github.com/AriaFallah/csv-parser.git

@@ -9,7 +9,9 @@
                 "${workspaceFolder}/ext/LuisaCompute/include/luisa/**",
                 "${workspaceFolder}/ext/LuisaCompute/include/luisa/backends/ext/cuda/lcub/",
                 "/usr/local/include/**",
-                "/usr/local/cuda-12.4/targets/x86_64-linux/include"
+                "/usr/local/cuda-12.2/targets/x86_64-linux/include",
+                "${workspaceFolder}/ext/csv-parser/**",
+                "${workspaceFolder}/ext/csv-parser"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

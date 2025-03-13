@@ -122,7 +122,7 @@ struct make_inverse_reindex {
         }
         BufferIndex res = device.create_buffer<uint>(count);
         stream << ShaderCollector<uint>::get_instance(device)->copy_shader(res, indices).dispatch(count);
-        print_buffer(stream, res.view());
+        // print_buffer(stream, res.view());
         return std::move(res);
     }
 };
