@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
     stream << set_bit(table._columns["opnprc"]._null_mask).dispatch(2) << synchronize();
     print_buffer(stream, table._columns["opnprc"]._null_mask._data.view());
 
-    // table.print_table();
+    table.print_table();
 
 
     Table table2(device, stream);
@@ -107,22 +107,40 @@ int main(int argc, char *argv[]) {
     stream << set_bit(table2._columns["clsprc"]._null_mask).dispatch(1) << synchronize();
     print_buffer(stream, table2._columns["clsprc"]._null_mask._data.view());
 
-    // table2.print_table();
+    table2.print_table();
 
-    clock.tic();
-    table.join(table2, "id", "id2", JoinType::LEFT);
-    LUISA_INFO("join in {} ms", clock.toc());
+    while (true) {
+        
+
+        int jointype;
+        std::cin >> jointype;
+    
+        JoinType jt;
+        if (jointype == 0) {
+            jt = JoinType::INNER;
+        } else if (jointype == 1) {
+            jt = JoinType::LEFT;
+        } else if (jointype == 2) {
+            jt = JoinType::RIGHT;
+        } else {
+            jt = JoinType::OUTER;
+        }
+        clock.tic();
+        table.query().join(table2, "id", "id2", jt)->print_table();
+        LUISA_INFO("join in {} ms", clock.toc());
+    }
+    
     // table.sort(argv[6], SortOrder::Ascending);
-    table.print_table();
+    // table.print_table();
     // table.where("opnprc", FilterOp::GREATER_EQUAL, 7.0f);
-    auto agg_op_map = unordered_map<string, vector<AggeragateOp>>();
+    // auto agg_op_map = unordered_map<string, vector<AggeragateOp>>();
+    // // agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
+    // agg_op_map.insert({"clsprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     // agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    agg_op_map.insert({"clsprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-    // agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN}});
-    clock.tic();
-    table.query().group_by(argv[6], agg_op_map)->print_table();
-    LUISA_INFO("group by in {} ms", clock.toc());
+    // // agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN}});
+    // clock.tic();
+    // table.query().group_by(argv[6], agg_op_map)->print_table();
+    // LUISA_INFO("group by in {} ms", clock.toc());
     // table.print_table();
 
     std::cout << "End.\n";

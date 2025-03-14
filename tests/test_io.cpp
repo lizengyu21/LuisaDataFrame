@@ -68,8 +68,5 @@ int main(int argc, char *argv[]) {
         t.print_table();
     }
     
-
-    // table.print_table();
-
     std::cout << "End.\n";
 }

@@ -238,7 +238,7 @@ public:
         } else if (join_type == JoinType::RIGHT) {
             std::tie(index_left, index_right) = type_dispatcher(type, right_join{}, _device, _stream, left_col, right_col);
         } else {
-            std::cout << "Unsupport join type\n";
+            LUISA_WARNING("Unsupported Join Type!");
             return this;
         }
 
@@ -246,8 +246,13 @@ public:
         // print_buffer(_stream, index_right.view());
         
         luisa::unordered_map<luisa::string, Column> join_result;
-        fill_join_result(_device, _stream, index_left, this->_columns, join_result);
-        fill_join_result(_device, _stream, index_right, other._columns, join_result);
+        if (join_type == JoinType::RIGHT) {
+            fill_join_result(_device, _stream, index_right, other._columns, join_result);
+            fill_join_result(_device, _stream, index_left, this->_columns, join_result);
+        } else {
+            fill_join_result(_device, _stream, index_left, this->_columns, join_result);
+            fill_join_result(_device, _stream, index_right, other._columns, join_result);
+        }
         _columns = std::move(join_result);
         return this;
     }
