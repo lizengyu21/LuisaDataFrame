@@ -158,7 +158,7 @@ private:
                 };
             };
         });
-        join_reindex_shader = device.compile<2>([](BufferVar<T> left, BufferVar<T> right, Var<Bitmap> left_null_mask, Var<Bitmap> right_null_mask, Var<Bitmap> match_mask, BufferVar<uint> result_index_start, BufferVar<uint> slot_pointer, BufferVar<uint> result_left, BufferVar<uint> result_right){
+        join_reindex_shader = device.compile<2>([](BufferVar<T> left, BufferVar<T> right, Var<Bitmap> left_null_mask, Var<Bitmap> right_null_mask, BufferVar<uint> result_index_start, BufferVar<uint> slot_pointer, BufferVar<uint> result_left, BufferVar<uint> result_right){
             auto xy = dispatch_id().xy();
             auto x = xy.x;
             auto y = xy.y;
@@ -181,7 +181,7 @@ private:
                 result_right.write(idx, UINT_NULL);
             };
         });
-        sum_shader = device.compile<1>([](BufferUInt count, Var<Bitmap> left_null_mask, BufferUInt result){
+        left_sum_shader = device.compile<1>([](BufferUInt count, Var<Bitmap> left_null_mask, BufferUInt result){
             auto x = dispatch_x();
             Shared<uint> block_sum{1};
             $if (thread_x() == 0u) { block_sum.write(0, 0); };
@@ -191,6 +191,16 @@ private:
                 count.write(x, 1u);
                 block_sum.atomic(0).fetch_add(1u); 
             } $elif (data != 0u) { block_sum.atomic(0).fetch_add(data); };
+            sync_block();
+            $if (thread_x() == 0u) { result.atomic(0).fetch_add(block_sum.read(0)); };
+        });
+        inner_sum_shader = device.compile<1>([](BufferUInt count, BufferUInt result){
+            auto x = dispatch_x();
+            Shared<uint> block_sum{1};
+            $if (thread_x() == 0u) { block_sum.write(0, 0); };
+            sync_block();
+            auto data = count.read(x);
+            $if (data != 0u) { block_sum.atomic(0).fetch_add(data); };
             sync_block();
             $if (thread_x() == 0u) { result.atomic(0).fetch_add(block_sum.read(0)); };
         });
@@ -328,11 +338,12 @@ public:
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> apply_shader;
 
     luisa::compute::Shader2D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, luisa::compute::Buffer<uint>, Bitmap, Bitmap, Bitmap> join_count_shader;
-    luisa::compute::Shader2D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, Bitmap, Bitmap, Bitmap, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> join_reindex_shader;
+    luisa::compute::Shader2D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, Bitmap, Bitmap, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> join_reindex_shader;
     luisa::compute::Shader1D<Bitmap, Bitmap, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> join_match_mask_filter_shader;
 
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex, Bitmap, Bitmap> reindex_with_nullmask_shader;
-    luisa::compute::Shader1D<luisa::compute::Buffer<uint>, Bitmap, luisa::compute::Buffer<uint>> sum_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint>, Bitmap, luisa::compute::Buffer<uint>> left_sum_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> inner_sum_shader;
 
 
     static ShaderCollector *get_instance(luisa::compute::Device &device) {

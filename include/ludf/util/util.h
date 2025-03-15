@@ -274,6 +274,54 @@ struct apply_on_column_Ret_T {
     }
 };
 
+struct inner_join {
+    template <class T>
+    std::pair<BufferIndex, BufferIndex> operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &left, Column &right) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        // std::cout << "LEFT JOIN\n";
+
+
+        auto left_data_view = left.view<T>();
+        auto right_data_view = right.view<T>();
+        BufferIndex join_count = device.create_buffer<uint>(left.size());
+        Bitmap match_mask;
+        match_mask.init_zero(device, stream, left.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(join_count, 0u).dispatch(left.size());
+        if (left._null_mask._data.size() == 0) left._null_mask.init_zero(device, stream, left.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+        if (right._null_mask._data.size() == 0) right._null_mask.init_zero(device, stream, right.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+
+
+        stream << ShaderCollector<T>::get_instance(device)->join_count_shader(left_data_view, right_data_view, join_count, left._null_mask, right._null_mask, match_mask).dispatch(luisa::compute::make_uint2(left.size(), right.size()));
+
+
+        Buffer<uint> total_rows_buffer = device.create_buffer<uint>(1);
+        uint total_rows; 
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(total_rows_buffer, 0u).dispatch(1)
+               << ShaderCollector<uint>::get_instance(device)->inner_sum_shader(join_count, total_rows_buffer).dispatch(left.size())
+               << total_rows_buffer.copy_to(&total_rows) << synchronize();
+
+        if (total_rows == 0) {
+            return std::make_pair(Buffer<uint>{}, Buffer<uint>{});
+        }
+
+        Buffer<uint> result_left = device.create_buffer<uint>(total_rows);
+        Buffer<uint> result_right = device.create_buffer<uint>(total_rows);
+        auto result_index_start = exclusive_sum(device, stream, join_count);
+        BufferIndex slot_pointer = device.create_buffer<uint>(left.size());
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(slot_pointer, 0u).dispatch(left.size());
+
+
+
+        stream << ShaderCollector<T>::get_instance(device)->join_reindex_shader(
+            left_data_view, right_data_view, left._null_mask, right._null_mask, result_index_start, slot_pointer, result_left, result_right).dispatch(luisa::compute::make_uint2(left.size(), right.size()));
+
+        return std::make_pair(std::move(result_left), std::move(result_right));
+    }
+};
+
+
 struct left_join {
     template <class T>
     std::pair<BufferIndex, BufferIndex> operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &left, Column &right) {
@@ -300,9 +348,12 @@ struct left_join {
         Buffer<uint> total_rows_buffer = device.create_buffer<uint>(1);
         uint total_rows; 
         stream << ShaderCollector<uint>::get_instance(device)->set_shader(total_rows_buffer, 0u).dispatch(1)
-               << ShaderCollector<uint>::get_instance(device)->sum_shader(join_count, left._null_mask, total_rows_buffer).dispatch(left.size())
+               << ShaderCollector<uint>::get_instance(device)->left_sum_shader(join_count, left._null_mask, total_rows_buffer).dispatch(left.size())
                << total_rows_buffer.copy_to(&total_rows) << synchronize();
-
+        
+        if (total_rows == 0) {
+            return std::make_pair(Buffer<uint>{}, Buffer<uint>{});
+        }
         // print_buffer(stream, join_count.view());
         // print_buffer(stream, total_rows_buffer.view());
 
@@ -315,7 +366,7 @@ struct left_join {
         // print_buffer(stream, result_index_start.view());
 
         stream << ShaderCollector<T>::get_instance(device)->join_reindex_shader(
-            left_data_view, right_data_view, left._null_mask, right._null_mask, match_mask, result_index_start, slot_pointer, result_left, result_right).dispatch(luisa::compute::make_uint2(left.size(), right.size()));
+            left_data_view, right_data_view, left._null_mask, right._null_mask, result_index_start, slot_pointer, result_left, result_right).dispatch(luisa::compute::make_uint2(left.size(), right.size()));
 
         stream << ShaderCollector<T>::get_instance(device)->join_match_mask_filter_shader(match_mask, left._null_mask, result_index_start, result_left, result_right).dispatch(left.size());
 
@@ -341,6 +392,9 @@ struct join_reindex_col {
         using namespace luisa;
         using namespace luisa::compute;
         BufferView<T> data_view = data.view<T>();
+        if (indices.size() == 0) {
+            return Column{data.dtype()};
+        }
         BufferBase res_buf = device.create_buffer<BaseType>(indices.size() * sizeof(T) / sizeof(BaseType));
         Bitmap null_mask;
         null_mask.init_zero(device, stream, indices.size(), ShaderCollector<uint>::get_instance(device)->set_shader);

@@ -237,6 +237,8 @@ public:
             std::tie(index_left, index_right) = type_dispatcher(type, left_join{}, _device, _stream, left_col, right_col);
         } else if (join_type == JoinType::RIGHT) {
             std::tie(index_left, index_right) = type_dispatcher(type, right_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::INNER) {
+            std::tie(index_left, index_right) = type_dispatcher(type, inner_join{}, _device, _stream, left_col, right_col);
         } else {
             LUISA_WARNING("Unsupported Join Type!");
             return this;
