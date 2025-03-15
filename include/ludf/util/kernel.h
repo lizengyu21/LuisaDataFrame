@@ -142,7 +142,6 @@ private:
                 mean_data.write(x, cast<float>(sum_data.read(x)) / cast<float>(count_data.read(x)));
             };
         });
-
         join_count_shader = device.compile<2>([](BufferVar<T> left, BufferVar<T> right, BufferVar<uint> count, Var<Bitmap> left_null_mask, Var<Bitmap> right_null_mask, Var<Bitmap> match_mask){
             auto xy = dispatch_id().xy();
             auto x = xy.x;
@@ -155,6 +154,24 @@ private:
                 count.atomic(x).fetch_add(1u); 
                 $if (!match_mask->test(x)) {
                     match_mask->set(x);
+                };
+            };
+        });
+        outer_join_count_shader = device.compile<2>([](BufferVar<T> left, BufferVar<T> right, BufferVar<uint> count, Var<Bitmap> left_null_mask, Var<Bitmap> right_null_mask, Var<Bitmap> match_mask, UInt left_size){
+            auto xy = dispatch_id().xy();
+            auto x = xy.x;
+            auto y = xy.y;
+            auto left_key = left.read(x);
+            auto right_key = right.read(y);
+            $if (left_null_mask->test(x) | right_null_mask->test(y)) {
+
+            } $elif (left_key == right_key) { 
+                count.atomic(x).fetch_add(1u);
+                $if (!match_mask->test(x)) {
+                    match_mask->set(x);
+                };
+                $if (!match_mask->test(y + left_size)) {
+                    match_mask->set(y + left_size);
                 };
             };
         });
@@ -181,6 +198,23 @@ private:
                 result_right.write(idx, UINT_NULL);
             };
         });
+        outer_join_match_mask_filter_shader = device.compile<1>([](Var<Bitmap> match_mask, Var<Bitmap> left_null_mask, Var<Bitmap> right_null_mask, BufferVar<uint> result_index_start, BufferUInt result_left, BufferUInt result_right, UInt left_size){
+            auto x = dispatch_x();
+            auto idx = result_index_start.read(x);
+            $if (!match_mask->test(x)) {
+                $if (x >= left_size) {
+                    $if (!right_null_mask->test(x - left_size)) {
+                        result_left.write(idx, UINT_NULL);
+                        result_right.write(idx, x - left_size);
+                    };
+                } $else {
+                    $if (!left_null_mask->test(x)) {
+                        result_left.write(idx, x);
+                        result_right.write(idx, UINT_NULL);
+                    };
+                };
+            };
+        });
         left_sum_shader = device.compile<1>([](BufferUInt count, Var<Bitmap> left_null_mask, BufferUInt result){
             auto x = dispatch_x();
             Shared<uint> block_sum{1};
@@ -201,6 +235,28 @@ private:
             sync_block();
             auto data = count.read(x);
             $if (data != 0u) { block_sum.atomic(0).fetch_add(data); };
+            sync_block();
+            $if (thread_x() == 0u) { result.atomic(0).fetch_add(block_sum.read(0)); };
+        });
+        outer_sum_shader = device.compile<1>([](BufferUInt count, Var<Bitmap> left_null_mask, Var<Bitmap> right_null_mask, Var<Bitmap> match_mask, BufferUInt result, UInt left_size){
+            Shared<uint> block_sum{1};
+            $if (thread_x() == 0u) { block_sum.write(0, 0); };
+            sync_block();
+
+            auto x = dispatch_x();
+            $if (x >= left_size) {
+                $if (!match_mask->test(x) & !right_null_mask->test(x - left_size)) { 
+                    count.write(x, 1u);
+                    block_sum.atomic(0).fetch_add(1u); 
+                };
+            } $else {
+                auto data = count.read(x);
+                $if (data == 0u & !left_null_mask->test(x)) { 
+                    count.write(x, 1u);
+                    block_sum.atomic(0).fetch_add(1u); 
+                } $elif (data != 0u) { block_sum.atomic(0).fetch_add(data); };
+            };
+
             sync_block();
             $if (thread_x() == 0u) { result.atomic(0).fetch_add(block_sum.read(0)); };
         });
@@ -338,11 +394,14 @@ public:
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> apply_shader;
 
     luisa::compute::Shader2D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, luisa::compute::Buffer<uint>, Bitmap, Bitmap, Bitmap> join_count_shader;
+    luisa::compute::Shader2D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, luisa::compute::Buffer<uint>, Bitmap, Bitmap, Bitmap, uint> outer_join_count_shader;
     luisa::compute::Shader2D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, Bitmap, Bitmap, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> join_reindex_shader;
     luisa::compute::Shader1D<Bitmap, Bitmap, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> join_match_mask_filter_shader;
+    luisa::compute::Shader1D<Bitmap, Bitmap, Bitmap, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>, uint> outer_join_match_mask_filter_shader;
 
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex, Bitmap, Bitmap> reindex_with_nullmask_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint>, Bitmap, luisa::compute::Buffer<uint>> left_sum_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint>, Bitmap, Bitmap, Bitmap, luisa::compute::Buffer<uint>, uint> outer_sum_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> inner_sum_shader;
 
 

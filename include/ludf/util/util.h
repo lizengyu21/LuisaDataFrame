@@ -274,6 +274,59 @@ struct apply_on_column_Ret_T {
     }
 };
 
+struct outer_join {
+    template <class T>
+    std::pair<BufferIndex, BufferIndex> operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &left, Column &right) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        // std::cout << "LEFT JOIN\n";
+
+
+        auto left_data_view = left.view<T>();
+        auto right_data_view = right.view<T>();
+        auto buffer_size = left.size() + right.size();
+
+        BufferIndex join_count = device.create_buffer<uint>(buffer_size);
+        Bitmap match_mask;
+        match_mask.init_zero(device, stream, buffer_size, ShaderCollector<uint>::get_instance(device)->set_shader);
+
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(join_count, 0u).dispatch(buffer_size);
+        if (left._null_mask._data.size() == 0) left._null_mask.init_zero(device, stream, left.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+        if (right._null_mask._data.size() == 0) right._null_mask.init_zero(device, stream, right.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+
+
+        stream << ShaderCollector<T>::get_instance(device)->outer_join_count_shader(left_data_view, right_data_view, join_count, left._null_mask, right._null_mask, match_mask, left.size()).dispatch(luisa::compute::make_uint2(left.size(), right.size()));
+
+        Buffer<uint> total_rows_buffer = device.create_buffer<uint>(1);
+        uint total_rows; 
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(total_rows_buffer, 0u).dispatch(1)
+               << ShaderCollector<uint>::get_instance(device)->outer_sum_shader(join_count, left._null_mask, right._null_mask, match_mask, total_rows_buffer, left.size()).dispatch(buffer_size)
+               << total_rows_buffer.copy_to(&total_rows) << synchronize();
+
+
+        if (total_rows == 0) {
+            return std::make_pair(Buffer<uint>{}, Buffer<uint>{});
+        }
+        // outer sum 左边的列将0的位置设置为1，右边的将没有匹配到（!match_mask->test(y)）的设置为1，则可得到整体的数量，并且后面可以直接用exclusive求index
+
+        Buffer<uint> result_left = device.create_buffer<uint>(total_rows);
+        Buffer<uint> result_right = device.create_buffer<uint>(total_rows);
+        auto result_index_start = exclusive_sum(device, stream, join_count);
+
+        BufferIndex slot_pointer = device.create_buffer<uint>(left.size());
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(slot_pointer, 0u).dispatch(left.size());
+
+
+
+        stream << ShaderCollector<T>::get_instance(device)->join_reindex_shader(
+            left_data_view, right_data_view, left._null_mask, right._null_mask, result_index_start, slot_pointer, result_left, result_right).dispatch(luisa::compute::make_uint2(left.size(), right.size()));
+
+        stream << ShaderCollector<T>::get_instance(device)->outer_join_match_mask_filter_shader(match_mask, left._null_mask, right._null_mask, result_index_start, result_left, result_right, left.size()).dispatch(buffer_size);
+
+        return std::make_pair(std::move(result_left), std::move(result_right));
+    }
+};
+
 struct inner_join {
     template <class T>
     std::pair<BufferIndex, BufferIndex> operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &left, Column &right) {
