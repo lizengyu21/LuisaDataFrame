@@ -60,6 +60,10 @@ public:
         append_column(name, data.data(), data.size_bytes());
     }
 
+    Table *interval() {
+        return this;
+    }
+
     Table *where(const luisa::string &name, const FilterOp op, std::any threshold) {
         if (_columns.find(name) == _columns.end()) return this;
         Column &col = _columns[name];
@@ -69,6 +73,18 @@ public:
             type_dispatcher(it->second.dtype(), inverse_reindex{}, _device, _stream, it->second, reindex);
         }
         return this;
+    }
+
+    Table *group_by(const luisa::string &name, const luisa::vector<AggeragateOp> &agg_op_vec = {}) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        unordered_map<string, vector<AggeragateOp>> agg_op_map;
+
+        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+            if (it->first == name) continue;
+            agg_op_map[it->first] = agg_op_vec;
+        }
+        return group_by(name, agg_op_map);
     }
 
     Table *group_by(const luisa::string &name, const luisa::unordered_map<luisa::string, luisa::vector<AggeragateOp>> &agg_op_map = {}) {

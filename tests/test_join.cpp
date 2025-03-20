@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
     while (true) {
         
 
-        int jointype;
+        int jointype, find;
         std::cin >> jointype;
     
         JoinType jt;
@@ -126,8 +126,15 @@ int main(int argc, char *argv[]) {
             jt = JoinType::OUTER;
         }
         clock.tic();
-        table.query().join(table2, "id", "id2", jt)->print_table();
+        auto t = table.query();
+        t.join(table2, "id", "id2", jt);
         LUISA_INFO("join in {} ms", clock.toc());
+        t.print_table();
+        clock.tic();
+        t.group_by("id",{AggeragateOp::MAX, AggeragateOp::COUNT, AggeragateOp::MEAN, AggeragateOp::SUM});
+        LUISA_INFO("where in {} ms", clock.toc());
+
+        t.print_table();
     }
     
     // table.sort(argv[6], SortOrder::Ascending);
