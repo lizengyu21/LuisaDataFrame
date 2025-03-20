@@ -60,7 +60,58 @@ public:
         append_column(name, data.data(), data.size_bytes());
     }
 
-    Table *interval() {
+
+    /*
+    * @brief: interval function
+    * @param: name: column name
+    * @param: span: interval span in seconds
+    * @return: Table pointer
+    */
+    Table *interval(luisa::string group_col_name, luisa::string ts_col_name = "", uint32_t span = 60 * 60 * 24 * 2) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        if (_columns.find(group_col_name) == _columns.end()) {
+            LUISA_WARNING("INTERVAL SKIP: column not found. group_col_name: {}", group_col_name);
+            return this;
+        }
+        if (_columns[group_col_name].size() == 0) return this;
+
+        if (group_col_name == ts_col_name) {
+            LUISA_WARNING("INTERVAL SKIP: group_col_name == ts_col_name");
+            return this;
+        }
+
+        if (ts_col_name == "") {
+            for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+                if (it->first == group_col_name) continue;
+                Column &col = it->second;
+                const auto &type = col.dtype();
+                if (type == TypeId::TIMESTAMP) {
+                    ts_col_name = it->first;
+                    break;
+                }
+            }
+        } else {
+            if (_columns.find(ts_col_name) == _columns.end()) {
+                LUISA_WARNING("INTERVAL SKIP: column not found. ts_col_name: {}", ts_col_name);
+                return this;
+            }
+            if (_columns[ts_col_name].dtype().id() != TypeId::TIMESTAMP) {
+                LUISA_WARNING("INTERVAL SKIP: column type not match. name: {}, desired type TIMESTAMP", ts_col_name);
+                return this;
+            }
+        }
+
+        if (ts_col_name == "") {
+            LUISA_WARNING("INTERVAL SKIP: no timestamp column found.");
+            return this;
+        }
+
+        LUISA_INFO("Interval: group_col_name: {}, ts_col_name: {}, span: {}", group_col_name, ts_col_name, span);
+
+
+
         return this;
     }
 

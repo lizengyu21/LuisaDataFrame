@@ -4,7 +4,7 @@
 #include <ludf/core/type_dispatcher.h>
 #include <sstream>
 #include <string>
-
+#include <chrono>
 
 struct Printer {
     luisa::unordered_map<luisa::string, void *> col_data;
@@ -82,8 +82,21 @@ struct Printer {
             return (null_mask[word_index] & (1u << bit_index)) != 0;
         }
     
+        static std::string timestamp_to_string(uint32_t timestamp) {
+            // 将时间戳转换为time_point
+            std::time_t time = static_cast<std::time_t>(timestamp);
+    
+            // 将 std::time_t 转换为 std::tm 结构
+            std::tm tm = *std::localtime(&time);
+        
+            // 使用 std::ostringstream 和 std::put_time 格式化时间
+            std::ostringstream oss;
+            oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+            return oss.str();
+        }
+
         template <class T>
-        void operator()(void *data, const luisa::vector<uint> &mask, size_t size, size_t &len) {
+        void operator()(void *data, const luisa::vector<uint> &mask, size_t size, size_t &len, const TypeId &type) {
             T *ptr = reinterpret_cast<T*>(data);
             for (size_t i = 0; i < size; ++i) {
                 if (is_null(mask, i)) len = std::max(len, 4ul);
@@ -94,7 +107,12 @@ struct Printer {
                         std::string formatted = ss.str();
                         len = std::max(len, formatted.length());
                     } else {
-                        len = std::max(len, std::to_string(ptr[i]).length());
+                        if (type == TypeId::TIMESTAMP) {
+                            uint32_t timestamp = static_cast<uint32_t>(ptr[i]);
+                            len = std::max(len, timestamp_to_string(timestamp).length());
+                        } else {
+                            len = std::max(len, std::to_string(ptr[i]).length());
+                        }
                     }
                 }
             }
@@ -108,7 +126,7 @@ struct Printer {
         bool overflow = max_rows < len;
         for (auto &it : col_type) {
             col_max_len[it.first] = std::max(it.first.length(), 4ul);
-            type_dispatcher(it.second, get_width{}, col_data[it.first], col_null_mask[it.first], print_len, col_max_len[it.first]);
+            type_dispatcher(it.second, get_width{}, col_data[it.first], col_null_mask[it.first], print_len, col_max_len[it.first], it.second);
         }
         header(col_max_len);
         print_data(col_max_len, print_len, overflow);
@@ -143,7 +161,7 @@ struct Printer {
                 if (is_null(col.first, row)) {
                     std::cout << std::setw(col_max_len.at(col.first)) << std::left << "NULL";
                 } else {
-                    type_dispatcher(col.second, print_value{}, col_data[col.first], row, col_max_len.at(col.first));
+                    type_dispatcher(col.second, print_value{}, col_data[col.first], row, col_max_len.at(col.first), col.second);
                 }
                 std::cout << " ";
             }
@@ -162,14 +180,19 @@ struct Printer {
 
     struct print_value {
         template <class T>
-        void operator()(void *data, size_t row, size_t width) {
+        void operator()(void *data, size_t row, size_t width, const TypeId &type) {
             T *ptr = reinterpret_cast<T*>(data);
             if constexpr (std::is_same_v<T, float>) {
                 std::stringstream ss;
                 ss << std::fixed << std::setprecision(4) << ptr[row];
                 std::cout << std::setw(width) << std::left << ss.str();
             } else {
-                std::cout << std::setw(width) << std::left << ptr[row];
+                if (type == TypeId::TIMESTAMP) {
+                    uint32_t timestamp = static_cast<uint32_t>(ptr[row]);
+                    std::cout << std::setw(width) << std::left << get_width::timestamp_to_string(timestamp);
+                } else {
+                    std::cout << std::setw(width) << std::left << ptr[row];
+                }
             }
         }
     };
