@@ -110,7 +110,56 @@ public:
 
         LUISA_INFO("Interval: group_col_name: {}, ts_col_name: {}, span: {}", group_col_name, ts_col_name, span);
 
+        auto &partition_col = _columns[group_col_name];
+        auto &ts_col = _columns[ts_col_name];
 
+        if (partition_col.dtype().id() != TypeId::INT32 && partition_col.dtype().id() != TypeId::UINT32) {
+            LUISA_WARNING("INTERVAL SKIP: column type not match. name: {}, desired type INT32 or UINT32", group_col_name);
+            return this;
+        }
+
+        print_buffer(_stream, partition_col._data.view());
+        print_buffer(_stream, ts_col._data.view());
+
+        // 采用和3DGS排序相同的策略，将ID放到高位，时间戳放到低位，拼成一个64位无符号整数
+        auto merged = merge_id_ts(_device, _stream, partition_col, ts_col);
+
+        print_buffer(_stream, merged.view());
+
+        auto indices = sort_u64_buffer(_device, _stream, merged);
+
+        print_buffer(_stream, merged.view());
+        print_buffer(_stream, indices.view());
+
+        Buffer<uint> sorted_id = _device.create_buffer<uint>(merged.size());
+        _stream << ShaderCollector<uint>::get_instance(_device)->get_high_32_shader(merged, sorted_id).dispatch(merged.size());
+
+        print_buffer(_stream, sorted_id.view());
+
+        auto id_adjacent_diff_result = adjacent_diff_buffer<uint>(_device, _stream, sorted_id);
+
+        print_buffer(_stream, id_adjacent_diff_result.view());
+
+        auto id_inclusive_sum_result = inclusive_sum(_device, _stream, id_adjacent_diff_result);
+
+        print_buffer(_stream, id_inclusive_sum_result.view());
+
+        uint num_group;
+        _stream << id_inclusive_sum_result.view(id_inclusive_sum_result.size() - 1, 1).copy_to(&num_group) << synchronize();
+        ++num_group;
+
+        Buffer<uint> start_ts = _device.create_buffer<uint>(num_group);
+
+        _stream << ShaderCollector<uint>::get_instance(_device)->get_start_time_from_64_lo_shader(merged, id_adjacent_diff_result, id_inclusive_sum_result, start_ts).dispatch(merged.size());
+
+        print_buffer(_stream, start_ts.view());
+
+        Buffer<uint> total_start_ts = _device.create_buffer<uint>(merged.size());
+        _stream << ShaderCollector<uint>::get_instance(_device)->inverse_reindex_shader(total_start_ts, start_ts, id_inclusive_sum_result).dispatch(merged.size());
+
+        print_buffer(_stream, total_start_ts.view());
+
+        
 
         return this;
     }

@@ -12,7 +12,65 @@ inline void print_buffer(luisa::compute::Stream &stream, const luisa::compute::B
 BufferIndex inclusive_sum(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result);
 BufferIndex exclusive_sum(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result);
 BufferBase unique_count(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &adjacent_diff_result, BufferIndex &indices, uint num_group);
+auto merge_id_ts(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &id_col, Column &ts_col) {
+    using namespace luisa;
+    using namespace luisa::compute;
 
+    if (id_col.size() == 0) return Buffer<uint64>{};
+
+
+    BufferView<uint32_t> ts_col_view = ts_col.view<uint32_t>();
+    BufferView<uint32_t> id_col_view = id_col.view<uint32_t>();
+
+    if (id_col._null_mask._data.size() == 0) {
+        id_col._null_mask.init_zero(device, stream, id_col.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+    }
+    if (ts_col._null_mask._data.size() == 0) {
+        ts_col._null_mask.init_zero(device, stream, ts_col.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+    }
+
+    Buffer<uint64> result = device.create_buffer<uint64>(id_col.size());
+
+    stream << ShaderCollector<uint>::get_instance(device)->concat_32_2_64_shader(id_col_view, id_col._null_mask, ts_col_view, ts_col._null_mask, result).dispatch(id_col.size());
+
+    return std::move(result);
+}
+
+inline auto sort_u64_buffer(luisa::compute::Device &device, luisa::compute::Stream &stream, luisa::compute::Buffer<uint64> &data) {
+    using namespace luisa;
+    using namespace luisa::compute;
+    using namespace luisa::compute::cuda::lcub;
+
+    size_t num_item = data.size();
+    BufferIndex indices_in = device.create_buffer<uint>(num_item);
+    BufferIndex indices_out = device.create_buffer<uint>(num_item);
+    Buffer<uint64> data_out = device.create_buffer<uint64>(num_item);
+    stream << ShaderCollector<uint>::get_instance(device)->arange_shader(indices_in).dispatch(num_item) << synchronize();
+
+    Buffer<int> temp_storage;
+    size_t temp_storage_size = -1;
+
+    DeviceRadixSort::SortPairs(temp_storage_size, data.view(), data_out.view(), indices_in.view(), indices_out.view(), num_item);
+
+    temp_storage = device.create_buffer<int>(temp_storage_size);
+    stream << DeviceRadixSort::SortPairs(temp_storage, data.view(), data_out.view(), indices_in.view(), indices_out.view(), num_item);
+    
+    data = std::move(data_out);
+
+    return std::move(indices_out);
+}
+
+template<class T>
+inline auto adjacent_diff_buffer(luisa::compute::Device &device, luisa::compute::Stream &stream, luisa::compute::Buffer<T> &data) {
+    using namespace luisa;
+    using namespace luisa::compute;
+
+    BufferIndex adjacent_diff_result = device.create_buffer<uint>(data.size());
+    stream << ShaderCollector<uint>::get_instance(device)->reset_shader(adjacent_diff_result).dispatch(1);
+    if (data.size() > 1) stream << ShaderCollector<T>::get_instance(device)->adjacent_diff_shader_wo_nullmask(data, adjacent_diff_result).dispatch(data.size() - 1);
+    return std::move(adjacent_diff_result);
+
+}
 // template <class T>
 // BufferBase inverse_reindex(Device &device, Stream &stream, const BufferView<T> &data, const BufferViewIndex &indices, size_t res_size = 0) {
 //     LUISA_ASSERT(indices.size() <= data.size(), "indices' length must be less than data's.");

@@ -11,6 +11,8 @@ using BufferBase = luisa::compute::Buffer<BaseType>;
 using JoinIndex = luisa::compute::uint2;
 
 constexpr uint UINT_NULL = 0u - 1u;
+constexpr uint64 UINT64_NULL = 0ull - 1ull;
+// constexpr int64 INT64_NULL = (1ll << 63) - 1;
 // namespace lc = luisa::compute;
 
 enum class TypeId {

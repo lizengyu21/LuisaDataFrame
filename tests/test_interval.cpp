@@ -49,16 +49,18 @@ int main(int argc, char *argv[]) {
     // read_csv("./data/TRD_Dalyr5.csv", table, type);
     LUISA_INFO("load csv data in {} ms", clock.toc());
 
+    std::cout << UINT64_NULL << '\n';
+
     while (true) {
-        string name;
+        int name;
         std::cin >> name;
         auto t = table.query();
-        t.where("Stkcd", FilterOp::LESS_EQUAL, 3);
-        t.where("Trddt", FilterOp::LESS_EQUAL, 1582588800u);
+        t.where("Stkcd", FilterOp::LESS_EQUAL, name);
+        t.where("Trddt", FilterOp::LESS_EQUAL, 1582588800u - 60*60*24*2u);
+        
+        t.interval("Stkcd");
+
         t.sort("Stkcd", SortOrder::Ascending);
-
-        t.interval(name);
-
         t.print_table();
     }
     std::cout << "End.\n";

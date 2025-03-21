@@ -109,6 +109,14 @@ private:
                 result.write(x + 1, 0u);
             };
         });
+        adjacent_diff_shader_wo_nullmask = device.compile<1>([](BufferVar<T> data, BufferVar<uint> result){
+            auto x = dispatch_x();
+            $if (data.read(x) != data.read(x + 1)) {
+                result.write(x + 1, 1u);
+            } $else {
+                result.write(x + 1, 0u);
+            };
+        });
         aggregate_count_shader = device.compile<1>([](BufferVar<uint> result, BufferUInt indices){
             auto x = dispatch_x();
             result.atomic(indices.read(x)).fetch_add(1u);
@@ -281,6 +289,41 @@ private:
             };
         });
 
+        concat_32_2_64_shader = device.compile<1>([](BufferVar<uint> left, Var<Bitmap> left_null_mask, BufferVar<uint> right, Var<Bitmap> right_null_mask, BufferVar<uint64> result){
+            auto x = dispatch_x();
+            $if (left_null_mask->test(x) | right_null_mask->test(x)) {
+                result.write(x, UINT64_NULL);
+            } $else {
+                Var<uint64> left_64 = cast<uint64>(left.read(x));
+                Var<uint64> right_64 = cast<uint64>(right.read(x));
+                result.write(x, ((left_64 << 32) | right_64));
+            };
+        });
+        get_high_32_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<uint> result){
+            auto x = dispatch_x();
+            result.write(x, cast<uint>(data.read(x) >> 32));
+        });
+        get_low_32_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<uint> result){
+            auto x = dispatch_x();
+            result.write(x, cast<uint>(data.read(x) & 0xFFFFFFFFull));
+        });
+        get_start_time_from_64_lo_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<uint> adjacent_diff, BufferVar<uint> indices, BufferVar<uint> result){
+            auto x = dispatch_x();
+            auto lo = cast<uint>(data.read(x) & 0xFFFFFFFFull);
+            $if (x == 0u) {
+                result.write(0u, lo);
+            } $else {
+                $if (adjacent_diff.read(x) == 1u) {
+                    result.write(indices.read(x), lo);
+                };
+            };
+
+        });
+        compute_time_block_id_from_64_lo_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<uint> start_ts, Var<uint> timespan){
+            auto x = dispatch_x();
+            // TODO: change data[31:0] from timestamp to time block id [This is a inplace operation]
+        });
+
         #define CREATE_REINEDX_SHADER(TYPE, SYMBOL) create_make_reindex_shader(device, FilterOp::TYPE, [](Var<T> a, Var<T> b){ return a SYMBOL b; })
         
         CREATE_REINEDX_SHADER(LESS, <);
@@ -404,6 +447,12 @@ public:
     luisa::compute::Shader1D<luisa::compute::Buffer<uint>, Bitmap, Bitmap, Bitmap, luisa::compute::Buffer<uint>, uint> outer_sum_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> inner_sum_shader;
 
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint>, Bitmap, luisa::compute::Buffer<uint>, Bitmap, luisa::compute::Buffer<uint64>> concat_32_2_64_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, luisa::compute::Buffer<uint>> get_high_32_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, luisa::compute::Buffer<uint>> get_low_32_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, BufferIndex> adjacent_diff_shader_wo_nullmask;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, BufferIndex, BufferIndex, BufferIndex> get_start_time_from_64_lo_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, BufferIndex, uint> compute_time_block_id_from_64_lo_shader;
 
     static ShaderCollector *get_instance(luisa::compute::Device &device) {
         if (instance == nullptr) {
