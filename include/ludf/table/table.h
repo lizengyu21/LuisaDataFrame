@@ -60,6 +60,18 @@ public:
         append_column(name, data.data(), data.size_bytes());
     }
 
+    Table *interval(luisa::string group_col_name, luisa::string ts_col_name = "", uint span = 60 * 60 * 24 * 2,  const luisa::vector<AggeragateOp> &agg_op_vec = {}) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        unordered_map<string, vector<AggeragateOp>> agg_op_map;
+
+        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+            if (it->first == group_col_name) continue;
+            agg_op_map[it->first] = agg_op_vec;
+        }
+
+        return interval(group_col_name, ts_col_name, span, agg_op_map);
+    }
 
     /*
     * @brief: interval function
@@ -67,7 +79,7 @@ public:
     * @param: span: interval span in seconds
     * @return: Table pointer
     */
-    Table *interval(luisa::string group_col_name, luisa::string ts_col_name = "", uint32_t span = 60 * 60 * 24 * 2) {
+    Table *interval(luisa::string group_col_name, luisa::string ts_col_name = "", uint span = 60 * 60 * 24 * 2, const luisa::unordered_map<luisa::string, luisa::vector<AggeragateOp>> &agg_op_map = {}) {
         using namespace luisa;
         using namespace luisa::compute;
 
@@ -118,31 +130,22 @@ public:
             return this;
         }
 
-        print_buffer(_stream, partition_col._data.view());
-        print_buffer(_stream, ts_col._data.view());
+        if (partition_col.size() == 0) {
+            LUISA_WARNING("INTERVAL SKIP: column size is 0. name: {}", group_col_name);
+            return this;
+        }
 
         // 采用和3DGS排序相同的策略，将ID放到高位，时间戳放到低位，拼成一个64位无符号整数
         auto merged = merge_id_ts(_device, _stream, partition_col, ts_col);
 
-        print_buffer(_stream, merged.view());
-
         auto indices = sort_u64_buffer(_device, _stream, merged);
 
-        print_buffer(_stream, merged.view());
-        print_buffer(_stream, indices.view());
+        BufferBase sorted_id = _device.create_buffer<BaseType>(merged.size());
+        _stream << ShaderCollector<BaseType>::get_instance(_device)->get_high_32_shader(merged, sorted_id).dispatch(merged.size());
 
-        Buffer<uint> sorted_id = _device.create_buffer<uint>(merged.size());
-        _stream << ShaderCollector<uint>::get_instance(_device)->get_high_32_shader(merged, sorted_id).dispatch(merged.size());
-
-        print_buffer(_stream, sorted_id.view());
-
-        auto id_adjacent_diff_result = adjacent_diff_buffer<uint>(_device, _stream, sorted_id);
-
-        print_buffer(_stream, id_adjacent_diff_result.view());
+        auto id_adjacent_diff_result = adjacent_diff_buffer<BaseType>(_device, _stream, sorted_id);
 
         auto id_inclusive_sum_result = inclusive_sum(_device, _stream, id_adjacent_diff_result);
-
-        print_buffer(_stream, id_inclusive_sum_result.view());
 
         uint num_group;
         _stream << id_inclusive_sum_result.view(id_inclusive_sum_result.size() - 1, 1).copy_to(&num_group) << synchronize();
@@ -152,15 +155,77 @@ public:
 
         _stream << ShaderCollector<uint>::get_instance(_device)->get_start_time_from_64_lo_shader(merged, id_adjacent_diff_result, id_inclusive_sum_result, start_ts).dispatch(merged.size());
 
-        print_buffer(_stream, start_ts.view());
+        BufferBase total_start_ts = _device.create_buffer<BaseType>(merged.size() * sizeof(uint) / sizeof(BaseType));
+        _stream << ShaderCollector<uint>::get_instance(_device)->inverse_reindex_shader(total_start_ts.view().as<uint>(), start_ts, id_inclusive_sum_result).dispatch(merged.size());
 
-        Buffer<uint> total_start_ts = _device.create_buffer<uint>(merged.size());
-        _stream << ShaderCollector<uint>::get_instance(_device)->inverse_reindex_shader(total_start_ts, start_ts, id_inclusive_sum_result).dispatch(merged.size());
+        _stream << ShaderCollector<uint>::get_instance(_device)->compute_time_block_id_from_64_lo_shader(merged, total_start_ts.view().as<uint>(), span).dispatch(merged.size());
 
-        print_buffer(_stream, total_start_ts.view());
 
-        
+        auto total_adjacent_diff_result = adjacent_diff_buffer<uint64>(_device, _stream, merged);
 
+        auto total_inclusive_sum_result = inclusive_sum(_device, _stream, total_adjacent_diff_result);
+
+        BufferBase total_end_ts = _device.create_buffer<BaseType>(merged.size() * sizeof(uint) / sizeof(BaseType));
+        _stream << ShaderCollector<uint>::get_instance(_device)->compute_start_and_end_ts_from_64_lo_shader(merged, total_start_ts.view().as<uint>(), total_end_ts.view().as<uint>(), span).dispatch(merged.size());
+
+        uint total_size;
+        _stream << total_inclusive_sum_result.view(total_inclusive_sum_result.size() - 1, 1).copy_to(&total_size) << synchronize();
+        ++total_size;
+   
+        partition_col.load(std::move(sorted_id));
+        type_dispatcher(partition_col.dtype(), reindex{}, _device, _stream, partition_col, total_inclusive_sum_result, total_size);
+        luisa::unordered_map<luisa::string, Column> res_columns;
+
+        res_columns.insert({group_col_name, std::move(partition_col)});
+
+        Column start_ts_col{TypeId::TIMESTAMP};
+        start_ts_col.load(std::move(total_start_ts));
+        type_dispatcher(start_ts_col.dtype(), reindex{}, _device, _stream, start_ts_col, total_inclusive_sum_result, total_size);
+        res_columns.insert({"_start_ts", std::move(start_ts_col)});
+
+        Column end_ts_col{TypeId::TIMESTAMP};
+        end_ts_col.load(std::move(total_end_ts));
+        type_dispatcher(end_ts_col.dtype(), reindex{}, _device, _stream, end_ts_col, total_inclusive_sum_result, total_size);
+        res_columns.insert({"_end_ts", std::move(end_ts_col)});
+
+        BufferBase each_group_count;
+
+        for (auto it = agg_op_map.begin(); it != agg_op_map.end(); ++it) {
+            if (it->first == group_col_name || it->first == ts_col_name) [[unlikely]] continue;
+            if (_columns.find(it->first) == _columns.end()) [[unlikely]] continue;
+
+            auto cur_kv = _columns.find(it->first);
+            const string &current_col_name = cur_kv->first;
+            Column &current_col = cur_kv->second;
+            const auto &current_col_type = current_col.dtype();
+
+            type_dispatcher(current_col_type, inverse_reindex{}, _device, _stream, current_col, indices);
+            for (const auto &agg_op : it->second) {
+                string new_col_name = agg_op_string(agg_op) + "(" + current_col_name + ")";
+
+                auto res_col = type_dispatcher(current_col_type, aggregate_column{}, _device, _stream, current_col, agg_op, total_inclusive_sum_result, total_size);
+                res_col._null_mask.init_zero(_device, _stream, total_size, ShaderCollector<uint>::get_instance(_device)->set_shader);
+
+                _stream << ShaderCollector<uint>::get_instance(_device)->reindex_bitmap_with_null_shader(res_col._null_mask, current_col._null_mask, total_inclusive_sum_result).dispatch(current_col.size());
+
+                if (each_group_count.size() == 0 && (agg_op == AggeragateOp::MEAN || agg_op == AggeragateOp::COUNT)) {
+                    each_group_count = unique_count(_device, _stream, total_adjacent_diff_result, total_inclusive_sum_result, total_size);
+                }
+
+                if (agg_op == AggeragateOp::MEAN) {
+                    type_dispatcher(current_col_type, sum_to_mean{}, _device, _stream, res_col, each_group_count.view().as<uint>());
+                }
+
+                if (agg_op == AggeragateOp::COUNT) {
+                    res_col.load(_device, _stream, each_group_count);
+                }
+
+                res_columns.insert({new_col_name, std::move(res_col)});
+            }
+            _columns.erase(cur_kv);
+        }
+
+        _columns = std::move(res_columns);
         return this;
     }
 

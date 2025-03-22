@@ -67,7 +67,13 @@ inline auto adjacent_diff_buffer(luisa::compute::Device &device, luisa::compute:
 
     BufferIndex adjacent_diff_result = device.create_buffer<uint>(data.size());
     stream << ShaderCollector<uint>::get_instance(device)->reset_shader(adjacent_diff_result).dispatch(1);
-    if (data.size() > 1) stream << ShaderCollector<T>::get_instance(device)->adjacent_diff_shader_wo_nullmask(data, adjacent_diff_result).dispatch(data.size() - 1);
+    if (data.size() > 1) {
+        if constexpr (std::is_same_v<T, uint64>) {
+            stream << ShaderCollector<uint>::get_instance(device)->adjacent_diff_shader_wo_nullmask_64_shader(data, adjacent_diff_result).dispatch(data.size() - 1);
+        } else {
+            stream << ShaderCollector<T>::get_instance(device)->adjacent_diff_shader_wo_nullmask(data, adjacent_diff_result).dispatch(data.size() - 1);
+        }
+    }
     return std::move(adjacent_diff_result);
 
 }

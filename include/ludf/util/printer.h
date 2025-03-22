@@ -187,13 +187,13 @@ struct Printer {
                 ss << std::fixed << std::setprecision(4) << ptr[row];
                 std::cout << std::setw(width) << std::left << ss.str();
             } else {
-                std::cout << std::setw(width) << std::left << ptr[row];
-                // if (type == TypeId::TIMESTAMP) {
-                //     uint32_t timestamp = static_cast<uint32_t>(ptr[row]);
-                //     std::cout << std::setw(width) << std::left << get_width::timestamp_to_string(timestamp);
-                // } else {
-                //     std::cout << std::setw(width) << std::left << ptr[row];
-                // }
+                // std::cout << std::setw(width) << std::left << ptr[row];
+                if (type == TypeId::TIMESTAMP) {
+                    uint32_t timestamp = static_cast<uint32_t>(ptr[row]);
+                    std::cout << std::setw(width) << std::left << get_width::timestamp_to_string(timestamp);
+                } else {
+                    std::cout << std::setw(width) << std::left << ptr[row];
+                }
             }
         }
     };

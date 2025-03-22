@@ -117,6 +117,14 @@ private:
                 result.write(x + 1, 0u);
             };
         });
+        adjacent_diff_shader_wo_nullmask_64_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<uint> result){
+            auto x = dispatch_x();
+            $if (data.read(x) != data.read(x + 1)) {
+                result.write(x + 1, 1u);
+            } $else {
+                result.write(x + 1, 0u);
+            };
+        });
         aggregate_count_shader = device.compile<1>([](BufferVar<uint> result, BufferUInt indices){
             auto x = dispatch_x();
             result.atomic(indices.read(x)).fetch_add(1u);
@@ -299,9 +307,9 @@ private:
                 result.write(x, ((left_64 << 32) | right_64));
             };
         });
-        get_high_32_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<uint> result){
+        get_high_32_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<T> result){
             auto x = dispatch_x();
-            result.write(x, cast<uint>(data.read(x) >> 32));
+            result.write(x, cast<T>(data.read(x) >> 32));
         });
         get_low_32_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<uint> result){
             auto x = dispatch_x();
@@ -322,6 +330,21 @@ private:
         compute_time_block_id_from_64_lo_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<uint> start_ts, Var<uint> timespan){
             auto x = dispatch_x();
             // TODO: change data[31:0] from timestamp to time block id [This is a inplace operation]
+            auto data_x = data.read(x);
+            auto lo = cast<uint>(data_x & 0xFFFFFFFFull);
+            auto time_id = (lo - start_ts.read(x)) / timespan;
+            Var<uint64> new_data = (data_x & 0xFFFFFFFF00000000ull) | cast<uint64>(time_id);
+            data.write(x, new_data);
+            // device_log("{} time_id: {}", x, time_id);
+        });
+        compute_start_and_end_ts_from_64_lo_shader = device.compile<1>([](BufferVar<uint64> data, BufferVar<uint> start_ts, BufferVar<uint> end_ts, Var<uint> timespan){
+            auto x = dispatch_x();
+            // TODO: change data[31:0] from timestamp to time block id [This is a inplace operation]
+            auto data_x = data.read(x);
+            auto lo = cast<uint>(data_x & 0xFFFFFFFFull);
+            auto block_start_ts = start_ts.read(x);
+            start_ts.write(x, block_start_ts + lo * timespan);
+            end_ts.write(x, block_start_ts + (lo + 1) * timespan - 1);
         });
 
         #define CREATE_REINEDX_SHADER(TYPE, SYMBOL) create_make_reindex_shader(device, FilterOp::TYPE, [](Var<T> a, Var<T> b){ return a SYMBOL b; })
@@ -448,11 +471,13 @@ public:
     luisa::compute::Shader1D<luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> inner_sum_shader;
 
     luisa::compute::Shader1D<luisa::compute::Buffer<uint>, Bitmap, luisa::compute::Buffer<uint>, Bitmap, luisa::compute::Buffer<uint64>> concat_32_2_64_shader;
-    luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, luisa::compute::Buffer<uint>> get_high_32_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, luisa::compute::Buffer<T>> get_high_32_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, luisa::compute::Buffer<uint>> get_low_32_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, BufferIndex> adjacent_diff_shader_wo_nullmask;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, BufferIndex> adjacent_diff_shader_wo_nullmask_64_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, BufferIndex, BufferIndex, BufferIndex> get_start_time_from_64_lo_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, BufferIndex, uint> compute_time_block_id_from_64_lo_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, BufferIndex, BufferIndex, uint> compute_start_and_end_ts_from_64_lo_shader;
 
     static ShaderCollector *get_instance(luisa::compute::Device &device) {
         if (instance == nullptr) {
