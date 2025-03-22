@@ -77,13 +77,13 @@ int main(int argc, char *argv[]) {
     table.create_column("id", TypeId::INT32);
     table.append_column("id", id1_vec);
 
-    auto opnprc_vec = createRandomVector<float>(size, 1, 1, seed + 20);
+    auto opnprc_vec = createRandomVector<float>(size, 0, 1, seed + 20);
     table.create_column("opnprc", TypeId::FLOAT32);
     table.append_column("opnprc", opnprc_vec);
 
-    table._columns["opnprc"]._null_mask.init_zero(device, stream, table._columns["opnprc"].size(), ShaderCollector<uint>::get_instance(device)->set_shader);
-    stream << set_bit(table._columns["opnprc"]._null_mask).dispatch(2) << synchronize();
-    print_buffer(stream, table._columns["opnprc"]._null_mask._data.view());
+    table._columns["id"]._null_mask.init_zero(device, stream, table._columns["id"].size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+    stream << set_bit(table._columns["id"]._null_mask).dispatch(2) << synchronize();
+    print_buffer(stream, table._columns["id"]._null_mask._data.view());
 
     table.print_table();
 
@@ -99,13 +99,13 @@ int main(int argc, char *argv[]) {
     auto id_vec = createRandomVector<int32_t>(size, 0, std::stoi(argv[5]), seed);
     table2.create_column("id2", TypeId::INT32);
     table2.append_column("id2", id_vec);
-    auto clsprc_vec = createRandomVector<float>(size, 1.5, 1.5, seed + 20);
+    auto clsprc_vec = createRandomVector<float>(size, 0, 1, seed + 20);
     table2.create_column("clsprc", TypeId::FLOAT32);
     table2.append_column("clsprc", clsprc_vec);
 
-    table2._columns["clsprc"]._null_mask.init_zero(device, stream, table2._columns["clsprc"].size(), ShaderCollector<uint>::get_instance(device)->set_shader);
-    stream << set_bit(table2._columns["clsprc"]._null_mask).dispatch(1) << synchronize();
-    print_buffer(stream, table2._columns["clsprc"]._null_mask._data.view());
+    table2._columns["id2"]._null_mask.init_zero(device, stream, table2._columns["id2"].size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+    stream << set_bit(table2._columns["id2"]._null_mask).dispatch(1) << synchronize();
+    print_buffer(stream, table2._columns["id2"]._null_mask._data.view());
 
     table2.print_table();
 
@@ -127,10 +127,23 @@ int main(int argc, char *argv[]) {
         }
         clock.tic();
         auto t = table.query();
-        t.join(table2, "id", "id2", jt);
-        LUISA_INFO("join in {} ms", clock.toc());
-        t.print_table();
+        t.hashmap_join(table2, "id", "id2", jt);
+        // t.group_by("id", {AggeragateOp::SUM, AggeragateOp::COUNT, AggeragateOp::MEAN});
+        stream << synchronize();
+        LUISA_INFO("hashmap join in {} ms", clock.toc());
+        t.print_table_length();
+        // t.print_table();
+
         clock.tic();
+        auto t2 = table.query();
+        t2.join(table2, "id", "id2", jt);
+        // t2.group_by("id", {AggeragateOp::SUM, AggeragateOp::COUNT, AggeragateOp::MEAN});
+        stream << synchronize();
+        LUISA_INFO("join in {} ms", clock.toc());
+        t.print_table_length();
+        // t2.print_table();
+
+
         // t.group_by("id",{AggeragateOp::MAX, AggeragateOp::COUNT, AggeragateOp::MEAN, AggeragateOp::SUM});
         // LUISA_INFO("where in {} ms", clock.toc());
 

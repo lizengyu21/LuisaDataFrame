@@ -206,10 +206,53 @@ private:
                 result_right.write(index_start + offset, y);
             };
         });
+
+        auto binary_search = [](const Var<Buffer<uint>> &data, const UInt &key, const UInt &size) {
+            UInt result = UINT_NULL;
+            UInt left = 0;
+            UInt right = size - 1u;
+
+            $while (left <= right) {
+                UInt mid = (left + right) / 2u;
+                auto value = data.read(mid);
+                $if (value <= key) {
+                    result = mid; // 更新结果，继续向右找更大的
+                    left = mid + 1u;
+                } $else {
+                    $if (mid == 0u) {
+                        $break; // 所有值都大于 target
+                    };
+                    right = mid - 1u;
+                };
+            };
+            return result;
+        };
+        join_reindex_hashmap_shader = device.compile<1>([&](UInt left_size, BufferVar<T> left, Var<Bitmap> left_null_mask, Var<Hashmap<T>> hashmap, BufferVar<uint> result_index_start, BufferVar<uint> right_mapped_indices,  BufferVar<uint> result_left, BufferVar<uint> result_right){
+            auto x = dispatch_x();
+            auto idx = binary_search(result_index_start, x, left_size);
+            $if (!left_null_mask->test(idx)) {
+                auto key = left.read(idx);
+                UInt slot = hashmap->find_slot(key);
+                $if (slot != UINT_NULL) {
+                    result_left.write(x, idx);
+                    auto right_index = right_mapped_indices.read(hashmap->_offset.read(slot) + x - result_index_start.read(idx));
+                    result_right.write(x, right_index);
+                };
+            };
+        });
+
         join_match_mask_filter_shader = device.compile<1>([](Var<Bitmap> match_mask, Var<Bitmap> null_mask, BufferVar<uint> result_index_start, BufferUInt result_left, BufferUInt result_right){
             auto x = dispatch_x();
             auto idx = result_index_start.read(x);
             $if (!match_mask->test(x) & !null_mask->test(x)) {
+                result_left.write(idx, x);
+                result_right.write(idx, UINT_NULL);
+            };
+        });
+        join_hashmap_filter_shader = device.compile<1>([](BufferVar<T> left, Var<Bitmap> null_mask, Var<Hashmap<T>> hashmap, BufferVar<uint> result_index_start, BufferUInt result_left, BufferUInt result_right){
+            auto x = dispatch_x();
+            auto idx = result_index_start.read(x);
+            $if (hashmap->find(left.read(x)) == 0u & !null_mask->test(x)) {
                 result_left.write(idx, x);
                 result_right.write(idx, UINT_NULL);
             };
@@ -242,7 +285,7 @@ private:
                 block_sum.atomic(0).fetch_add(1u); 
             } $elif (data != 0u) { block_sum.atomic(0).fetch_add(data); };
             sync_block();
-            $if (thread_x() == 0u) { result.atomic(0).fetch_add(block_sum.read(0)); };
+            $if (thread_x() == 0u & block_sum.read(0) != 0u) { result.atomic(0).fetch_add(block_sum.read(0)); };
         });
         inner_sum_shader = device.compile<1>([](BufferUInt count, BufferUInt result){
             auto x = dispatch_x();
@@ -345,6 +388,48 @@ private:
             auto block_start_ts = start_ts.read(x);
             start_ts.write(x, block_start_ts + lo * timespan);
             end_ts.write(x, block_start_ts + (lo + 1) * timespan - 1);
+        });
+        create_hashmap_shader = device.compile<1>([](BufferVar<T> keys, Var<Bitmap> null_mask, Var<Hashmap<T>> hashmap){
+            auto x = dispatch_x();
+            $if (!null_mask->test(x)) {
+                auto key = keys.read(x);
+                hashmap->insert(key);
+            };
+        });
+        read_hashmap_shader = device.compile<1>([](BufferVar<T> keys, Var<Bitmap> null_mask, Var<Hashmap<T>> hashmap, BufferVar<uint> result){
+            auto x = dispatch_x();
+            $if (!null_mask->test(x)) {
+                auto key = keys.read(x);
+                auto count = hashmap->find(key);
+                result.write(x, count);
+            };
+        });
+        hashmap_to_index_shader = device.compile<1>([](BufferVar<T> keys, Var<Bitmap> null_mask, Var<Hashmap<T>> hashmap, BufferVar<uint> result){
+            auto x = dispatch_x();
+            $if (!null_mask->test(x)) {
+                auto key = keys.read(x);
+                auto idx = hashmap->find_index(key);
+                result.write(idx, x);
+            };
+        });
+        assertion_shader = device.compile<1>([](BufferVar<T> l, BufferVar<T> r){
+            auto x = dispatch_x();
+            $if (l.read(x) != r.read(x)) {
+                device_log("DIFF: {} <=> {}", l.read(x) ,r.read(x));
+            };
+        });
+        sum_shader = device.compile<1>([](BufferVar<T> data, BufferVar<T> result){
+            auto x = dispatch_x();
+            auto d = data.read(x);
+            Shared<T> block_sum{1u};
+            $if (thread_x() == 0u) { block_sum.write(0u, cast<T>(0)); };
+            sync_block();
+            $if (d != cast<T>(0)) { block_sum.atomic(0u).fetch_add(d); };
+            sync_block();
+            auto block_data = block_sum.read(0u);
+            $if (block_data != cast<T>(0) & thread_x() == 0u) {
+                result.atomic(0).fetch_add(block_data);
+            };
         });
 
         #define CREATE_REINEDX_SHADER(TYPE, SYMBOL) create_make_reindex_shader(device, FilterOp::TYPE, [](Var<T> a, Var<T> b){ return a SYMBOL b; })
@@ -478,6 +563,16 @@ public:
     luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, BufferIndex, BufferIndex, BufferIndex> get_start_time_from_64_lo_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, BufferIndex, uint> compute_time_block_id_from_64_lo_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<uint64>, BufferIndex, BufferIndex, uint> compute_start_and_end_ts_from_64_lo_shader;
+
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, Hashmap<T>> create_hashmap_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, Hashmap<T>, BufferIndex> read_hashmap_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, Hashmap<T>, BufferIndex> hashmap_to_index_shader;
+
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> assertion_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> sum_shader;
+
+    luisa::compute::Shader1D<uint, luisa::compute::Buffer<T>, Bitmap, Hashmap<T>, BufferIndex, BufferIndex, BufferIndex, BufferIndex> join_reindex_hashmap_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, Hashmap<T>, BufferIndex, BufferIndex, BufferIndex> join_hashmap_filter_shader;
 
     static ShaderCollector *get_instance(luisa::compute::Device &device) {
         if (instance == nullptr) {

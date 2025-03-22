@@ -4,7 +4,7 @@
 #include <luisa/luisa-compute.h>
 
 template <class T>
-inline void init(luisa::compute::Device &device, luisa::compute::Stream &stream, Hashmap<T> &hashmap, uint capacity) {
+inline void hashmap_init(luisa::compute::Device &device, luisa::compute::Stream &stream, Hashmap<T> &hashmap, uint capacity) {
     using namespace luisa;
     using namespace luisa::compute;
 

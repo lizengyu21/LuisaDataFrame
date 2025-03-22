@@ -442,6 +442,57 @@ public:
         return this;
     }
 
+    Table *hashmap_join(Table &other, const luisa::string &col_left, const luisa::string &col_right, const JoinType &join_type = JoinType::LEFT) {
+        if (_columns.find(col_left) == _columns.end() || other._columns.find(col_right) == other._columns.end()) {
+            LUISA_WARNING("JOIN SKIP: column not found. left: {}, right: {}", col_left, col_right);
+            return this;
+        }
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        Column &left_col = _columns[col_left];
+        Column &right_col = other._columns[col_right];
+
+        if (left_col.dtype() != right_col.dtype()) {
+            LUISA_WARNING("JOIN SKIP: column type not match. left: {}, right: {}", type_id_string(left_col.dtype().id()), type_id_string(right_col.dtype().id()));
+            return this;
+        }
+
+        Clock clock;
+
+        auto type = left_col.dtype().id();
+        BufferIndex index_left, index_right;
+
+        clock.tic();
+        if (join_type == JoinType::LEFT) {
+            std::tie(index_left, index_right) = type_dispatcher(type, hashmap_left_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::RIGHT) {
+            std::tie(index_left, index_right) = type_dispatcher(type, hashmap_right_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::INNER) {
+            std::tie(index_left, index_right) = type_dispatcher(type, inner_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::OUTER) {
+            std::tie(index_left, index_right) = type_dispatcher(type, outer_join{}, _device, _stream, left_col, right_col);
+        }  else {
+            LUISA_WARNING("Unsupported Join Type!");
+            return this;
+        }
+        LUISA_INFO("get left & right indices in {} ms", clock.toc());
+
+        // print_buffer(_stream, index_left.view());
+        // print_buffer(_stream, index_right.view());
+        
+        luisa::unordered_map<luisa::string, Column> join_result;
+        if (join_type == JoinType::RIGHT) {
+            fill_join_result(_device, _stream, index_right, other._columns, join_result);
+            fill_join_result(_device, _stream, index_left, this->_columns, join_result);
+        } else {
+            fill_join_result(_device, _stream, index_left, this->_columns, join_result);
+            fill_join_result(_device, _stream, index_right, other._columns, join_result);
+        }
+        _columns = std::move(join_result);
+        return this;
+    }
+
     void print_table() {
         printer.load(_device, _stream, _columns);
         printer.print(40);

@@ -1,3 +1,23 @@
 ./build/bin/test_join cuda 100000 5 50000 5
 [2025-03-22 17:20:55.584] [console] [info] join in 175.991965 ms
 Total Size: 833362032
+
+
+./build/bin/test_join cuda 10 5 10 2
+left index and right index
+[2, 3, 4, 5, 6, 7, 8, 8, 9, ]
+[2147483647, 2147483647, 2147483647, 2147483647, 2147483647, 2147483647, 6, 7, 2147483647, ]
+
+./build/bin/test_join cuda 500000 500 500000 500
+[2025-03-23 03:02:45.407] [console] [info] get left & right indices in 27.727079 ms
+[2025-03-23 03:02:45.443] [console] [info] hashmap join in 64.042138 ms
+Total Size: 499001572
+[2025-03-23 03:02:47.673] [console] [info] join in 2229.587756 ms
+Total Size: 499001572
+
+./build/bin/test_join cuda 500000 5000000 500000 5000000
+[2025-03-23 03:05:28.852] [console] [info] get left & right indices in 2.7704109999999997 ms
+[2025-03-23 03:05:28.852] [console] [info] hashmap join in 3.838408 ms
+Total Size: 502369
+[2025-03-23 03:05:30.492] [console] [info] join in 1639.166332 ms
+Total Size: 502369

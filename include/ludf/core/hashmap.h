@@ -2,6 +2,8 @@
 #include <luisa/luisa-compute.h>
 #include <ludf/core/type.h>
 
+constexpr double load_factor = 1.2;
+
 template <class Key>
 struct Hashmap {
     BufferIndex _key;
@@ -84,5 +86,46 @@ LUISA_BINDING_GROUP_TEMPLATE(TEMPLATE_T, Hashmap<T>, _key, _counter, _offset, _c
             slot = (slot + 1u) % this->_capacity;
         };
         return result;
+    }
+
+    [[nodiscard]] luisa::compute::UInt find_index(const luisa::compute::Var<T> &key) noexcept {
+        using namespace luisa;
+        using namespace luisa::compute;
+        UInt slot = this->hash(key);
+        UInt uint_key = as<uint>(key);
+        UInt result;
+        $while (true) {
+            auto cur_key = this->_key.read(slot);
+            $if (cur_key == uint_key) {
+                // 找到槽位了
+                auto offset = this->_offset.read(slot);
+                auto bias = this->_counter.atomic(slot).fetch_sub(1u) - 1u;
+                result = offset + bias;
+                $break;
+            } $elif (cur_key == UINT_NULL) {
+                result = UINT_NULL;
+                $break;
+            };
+            slot = (slot + 1u) % this->_capacity;
+        };
+        return result;
+    }
+
+    [[nodiscard]] luisa::compute::UInt find_slot(const luisa::compute::Var<T> &key) noexcept {
+        using namespace luisa;
+        using namespace luisa::compute;
+        UInt slot = this->hash(key);
+        UInt uint_key = as<uint>(key);
+        $while (true) {
+            auto cur_key = this->_key.read(slot);
+            $if (cur_key == uint_key) {
+                $break;
+            } $elif (cur_key == UINT_NULL) {
+                slot = UINT_NULL;
+                $break;
+            };
+            slot = (slot + 1u) % this->_capacity;
+        };
+        return slot;
     }
 };

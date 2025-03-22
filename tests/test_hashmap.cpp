@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
     Hashmap<uint> hm;
     uint capacity, test_size, mod;
     std::cin >> capacity >> test_size >> mod;
-    init(device, stream, hm, capacity);
+    hashmap_init(device, stream, hm, capacity);
 
     std::cout << "Input: " << capacity << " " << test_size << " " << mod << std::endl;
 

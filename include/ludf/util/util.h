@@ -5,6 +5,7 @@
 #include <any>
 #include <luisa/backends/ext/cuda/lcub/device_radix_sort.h>
 #include <ludf/core/hashmap.h>
+#include <ludf/util/hashmap/helper.h>
 
 template<class T>
 inline void print_buffer(luisa::compute::Stream &stream, const luisa::compute::BufferView<T> & buffer);
@@ -438,6 +439,74 @@ struct inner_join {
     }
 };
 
+struct hashmap_left_join {
+    template <class T>
+    std::pair<BufferIndex, BufferIndex> operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &left, Column &right) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        // std::cout << "LEFT JOIN\n";
+
+
+        auto left_data_view = left.view<T>();
+        auto right_data_view = right.view<T>();
+        BufferIndex join_count = device.create_buffer<uint>(left.size());
+
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(join_count, 0u).dispatch(left.size());
+        if (left._null_mask._data.size() == 0) left._null_mask.init_zero(device, stream, left.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+        if (right._null_mask._data.size() == 0) right._null_mask.init_zero(device, stream, right.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+
+
+        Hashmap<T> hashmap;
+        hashmap_init(device, stream, hashmap, right.size() * load_factor);
+        stream << ShaderCollector<T>::get_instance(device)->create_hashmap_shader(right_data_view, right._null_mask, hashmap).dispatch(right.size());
+        stream << ShaderCollector<T>::get_instance(device)->read_hashmap_shader(left_data_view, left._null_mask, hashmap, join_count).dispatch(left.size());
+
+
+        hashmap._offset = exclusive_sum(device, stream, hashmap._counter);
+
+        BufferIndex hashmap_counter_copy = device.create_buffer<uint>(hashmap._counter.size());
+        stream << hashmap_counter_copy.copy_from(hashmap._counter);
+
+
+        BufferIndex right_mapped_indices = device.create_buffer<uint>(right.size());
+        stream << ShaderCollector<T>::get_instance(device)->hashmap_to_index_shader(right_data_view, right._null_mask, hashmap, right_mapped_indices).dispatch(right_data_view.size());
+        hashmap._counter = std::move(hashmap_counter_copy);
+
+        Buffer<uint> total_rows_buffer = device.create_buffer<uint>(1);
+        uint total_rows; 
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(total_rows_buffer, 0u).dispatch(1)
+               << ShaderCollector<uint>::get_instance(device)->left_sum_shader(join_count, left._null_mask, total_rows_buffer).dispatch(left.size())
+               << total_rows_buffer.copy_to(&total_rows) << synchronize();
+        
+        if (total_rows == 0) {
+            return std::make_pair(Buffer<uint>{}, Buffer<uint>{});
+        }
+
+        Buffer<uint> result_left = device.create_buffer<uint>(total_rows);
+        Buffer<uint> result_right = device.create_buffer<uint>(total_rows);
+
+
+
+        auto result_index_start = exclusive_sum(device, stream, join_count);
+        BufferIndex slot_pointer = device.create_buffer<uint>(left.size());
+        stream << ShaderCollector<uint>::get_instance(device)->set_shader(slot_pointer, 0u).dispatch(left.size());
+
+        stream << ShaderCollector<T>::get_instance(device)->join_reindex_hashmap_shader(
+            left.size(),
+            left_data_view, 
+            left._null_mask,
+            hashmap,
+            result_index_start,
+            right_mapped_indices,
+            result_left,
+            result_right
+        ).dispatch(total_rows);
+
+        stream << ShaderCollector<T>::get_instance(device)->join_hashmap_filter_shader(left_data_view, left._null_mask, hashmap, result_index_start, result_left, result_right).dispatch(left.size());
+
+        return std::make_pair(std::move(result_left), std::move(result_right));
+    }
+};
 
 struct left_join {
     template <class T>
@@ -471,8 +540,6 @@ struct left_join {
         if (total_rows == 0) {
             return std::make_pair(Buffer<uint>{}, Buffer<uint>{});
         }
-        // print_buffer(stream, join_count.view());
-        // print_buffer(stream, total_rows_buffer.view());
 
         Buffer<uint> result_left = device.create_buffer<uint>(total_rows);
         Buffer<uint> result_right = device.create_buffer<uint>(total_rows);
@@ -480,14 +547,24 @@ struct left_join {
         BufferIndex slot_pointer = device.create_buffer<uint>(left.size());
         stream << ShaderCollector<uint>::get_instance(device)->set_shader(slot_pointer, 0u).dispatch(left.size());
 
-        // print_buffer(stream, result_index_start.view());
-
         stream << ShaderCollector<T>::get_instance(device)->join_reindex_shader(
             left_data_view, right_data_view, left._null_mask, right._null_mask, result_index_start, slot_pointer, result_left, result_right).dispatch(luisa::compute::make_uint2(left.size(), right.size()));
 
         stream << ShaderCollector<T>::get_instance(device)->join_match_mask_filter_shader(match_mask, left._null_mask, result_index_start, result_left, result_right).dispatch(left.size());
 
         return std::make_pair(std::move(result_left), std::move(result_right));
+    }
+};
+
+struct hashmap_right_join {
+    template <class T>
+    std::pair<BufferIndex, BufferIndex> operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &left, Column &right) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        BufferIndex l;
+        BufferIndex r;
+        std::tie(r, l) = hashmap_left_join{}.operator()<T>(device, stream, right, left);
+        return std::make_pair(std::move(l), std::move(r));
     }
 };
 
