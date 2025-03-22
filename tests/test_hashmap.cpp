@@ -33,17 +33,34 @@ int main(int argc, char *argv[]) {
     Clock clock;
 
     Hashmap<uint> hm;
-    init(device, stream, hm, 100);
+    uint capacity, test_size, mod;
+    std::cin >> capacity >> test_size >> mod;
+    init(device, stream, hm, capacity);
 
-    print_buffer(stream, hm._key.view().as<uint>());
+    std::cout << "Input: " << capacity << " " << test_size << " " << mod << std::endl;
 
     auto test_hash_shader = device.compile<1>([&](Var<Hashmap<uint>> hashmap){
         auto x = dispatch_x();
-        auto t = hashmap->hash(x);
-        device_log("{} -> {}", x, t);
+        auto insert_key = x % mod;
+        hashmap->insert(insert_key);
     });
 
-    stream << test_hash_shader(hm).dispatch(100);
+    auto count_buffer = device.create_buffer<uint>(mod);
+
+    auto test_find_shader = device.compile<1>([&](Var<Hashmap<uint>> hashmap){
+        auto x = dispatch_x();
+        auto counter = hashmap->find(x);
+        count_buffer->write(x, counter);
+    });
+
+    stream << test_hash_shader(hm).dispatch(test_size) << synchronize();
+
+    print_buffer(stream, hm._key.view().as<uint>());
+    print_buffer(stream, hm._counter.view());
+
+    stream << test_find_shader(hm).dispatch(mod) << synchronize();
+
+    print_buffer(stream, count_buffer.view());
 
     std::cout << "End.\n";
 }

@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
         auto t = table.query();
         t.join(table2, "id", "id2", jt);
         LUISA_INFO("join in {} ms", clock.toc());
-        t.print_table_length();
+        t.print_table();
         clock.tic();
         // t.group_by("id",{AggeragateOp::MAX, AggeragateOp::COUNT, AggeragateOp::MEAN, AggeragateOp::SUM});
         // LUISA_INFO("where in {} ms", clock.toc());
