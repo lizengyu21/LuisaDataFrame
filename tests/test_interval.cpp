@@ -42,31 +42,35 @@ int main(int argc, char *argv[]) {
         {"Clsprc", TypeId::FLOAT32}
     };
     read_csv("./data/TRD_Dalyr0.csv", table, type);
-    // read_csv("./data/TRD_Dalyr1.csv", table, type);
-    // read_csv("./data/TRD_Dalyr2.csv", table, type);
-    // read_csv("./data/TRD_Dalyr3.csv", table, type);
-    // read_csv("./data/TRD_Dalyr4.csv", table, type);
-    // read_csv("./data/TRD_Dalyr5.csv", table, type);
+    read_csv("./data/TRD_Dalyr1.csv", table, type);
+    read_csv("./data/TRD_Dalyr2.csv", table, type);
+    read_csv("./data/TRD_Dalyr3.csv", table, type);
+    read_csv("./data/TRD_Dalyr4.csv", table, type);
+    read_csv("./data/TRD_Dalyr5.csv", table, type);
     LUISA_INFO("load csv data in {} ms", clock.toc());
 
     while (true) {
         int cd;
-        std::cin >> cd;
+        // std::cin >> cd;
         uint span;
         std::cin >> span;
-        auto t = table.query();
-        t.where("Stkcd", FilterOp::LESS_EQUAL, cd);
-        // t.where("Trddt", FilterOp::LESS_EQUAL, 1582588800u - 60*60*24*1u);
-
-        t.sort("Stkcd", SortOrder::Ascending);
-        t.print_table();
-        t.sort("Trddt", SortOrder::Ascending);
-
+        int test_round;
+        std::cin >> test_round;
         clock.tic();
-        t.interval("Stkcd", "", 60*60*24*span, {AggeragateOp::COUNT, AggeragateOp::MEAN, AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN});
-        LUISA_INFO("interval in {} ms", clock.toc());
-        t.print_table();
+        for (int i = 0; i < test_round; ++i) {
+            table.query().interval("Stkcd", "", 60*60*24*span, {AggeragateOp::COUNT, AggeragateOp::MEAN, AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN});
+        }
+        LUISA_INFO("interval in {} ms for {} times, avg {} ms", clock.toc(), test_round, clock.toc() / double(test_round));
+        // auto t = table.query();
+        // // t.where("Stkcd", FilterOp::LESS_EQUAL, cd);
+        // // t.where("Trddt", FilterOp::LESS_EQUAL, 1582588800u - 60*60*24*1u);
 
+        // // t.sort("Stkcd", SortOrder::Ascending);
+        // // t.print_table();
+        // // t.sort("Trddt", SortOrder::Ascending);
+
+        
+        // t.print_table();
     }
     std::cout << "End.\n";
 }

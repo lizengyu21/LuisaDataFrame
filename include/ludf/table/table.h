@@ -120,7 +120,7 @@ public:
             return this;
         }
 
-        LUISA_INFO("Interval: group_col_name: {}, ts_col_name: {}, span: {}", group_col_name, ts_col_name, span);
+        // LUISA_INFO("Interval: group_col_name: {}, ts_col_name: {}, span: {}", group_col_name, ts_col_name, span);
 
         auto &partition_col = _columns[group_col_name];
         auto &ts_col = _columns[ts_col_name];
