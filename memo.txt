@@ -1,0 +1,3 @@
+./build/bin/test_join cuda 100000 5 50000 5
+[2025-03-22 17:20:55.584] [console] [info] join in 175.991965 ms
+Total Size: 833362032

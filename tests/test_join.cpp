@@ -129,12 +129,12 @@ int main(int argc, char *argv[]) {
         auto t = table.query();
         t.join(table2, "id", "id2", jt);
         LUISA_INFO("join in {} ms", clock.toc());
-        t.print_table();
+        t.print_table_length();
         clock.tic();
-        t.group_by("id",{AggeragateOp::MAX, AggeragateOp::COUNT, AggeragateOp::MEAN, AggeragateOp::SUM});
-        LUISA_INFO("where in {} ms", clock.toc());
+        // t.group_by("id",{AggeragateOp::MAX, AggeragateOp::COUNT, AggeragateOp::MEAN, AggeragateOp::SUM});
+        // LUISA_INFO("where in {} ms", clock.toc());
 
-        t.print_table();
+        // t.print_table();
     }
     
     // table.sort(argv[6], SortOrder::Ascending);

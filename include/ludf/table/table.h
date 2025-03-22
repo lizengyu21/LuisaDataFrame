@@ -446,4 +446,8 @@ public:
         printer.load(_device, _stream, _columns);
         printer.print(40);
     }
+
+    void print_table_length() {
+        printer.print_length(_columns);
+    }
 };

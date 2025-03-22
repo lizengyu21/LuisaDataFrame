@@ -37,6 +37,12 @@ struct Printer {
         return (col_null_mask.at(col_name)[word_index] & (1u << bit_index)) != 0;
     }
 
+    void print_length(luisa::unordered_map<luisa::string, Column> &_columns) {
+        std::cout << "Total Size: ";
+        if (_columns.empty()) std::cout << 0 << std::endl;
+        else std::cout << _columns.begin()->second.size() << std::endl;
+    }
+
     void load(luisa::compute::Device &device, luisa::compute::Stream &stream, luisa::unordered_map<luisa::string, Column> &_columns) {
         clear();
         if (_columns.empty()) {
