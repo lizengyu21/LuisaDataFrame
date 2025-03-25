@@ -335,19 +335,36 @@ struct sum_to_mean {
     }
 };
 
-struct apply_on_column_T {
+struct _apply_on_column_T {
     template <class T>
     void operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &col, void *apply_func_ptr) {
         using namespace luisa;
         using namespace luisa::compute;
 
+
         BufferView<T> data_view = col.view<T>();
         BufferBase result = device.create_buffer<BaseType>(col.size() * sizeof(T) / sizeof(BaseType));
+
         ShaderCollector<T>::get_instance(device)->create_apply_shader(device, apply_func_ptr);
-        stream << ShaderCollector<T>::get_instance(device)->apply_shader(result.view().as<T>(), data_view).dispatch(col.size());
+        stream << ShaderCollector<T>::get_instance(device)->apply_shader_cache[apply_func_ptr](result.view().as<T>(), data_view).dispatch(col.size());
 
         col.load(std::move(result));
+    }
+};
 
+struct apply_on_column_T {
+    template <class T>
+    Column operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &col, void *apply_func_ptr) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+
+        BufferView<T> data_view = col.view<T>();
+        BufferBase result = device.create_buffer<BaseType>(col.size() * sizeof(T) / sizeof(BaseType));
+
+        ShaderCollector<T>::get_instance(device)->create_apply_shader(device, apply_func_ptr);
+        stream << ShaderCollector<T>::get_instance(device)->apply_shader_cache[apply_func_ptr](result.view().as<T>(), data_view).dispatch(col.size());
+        return Column{std::move(result), col.dtype()};
     }
 };
 

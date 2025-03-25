@@ -515,7 +515,7 @@ public:
         // _stream << synchronize();
     }
 
-    void group_by(const luisa::string &name, const AggeragateOperation &operation) {
+    void _group_by(const luisa::string &name, const AggeragateOperation &operation) {
         assert(_column_type.find(name) != _column_type.end());
         const auto &type = _column_type[name];
         switch (type) {
@@ -639,7 +639,7 @@ int main(int argc, char *argv[]) {
     table.print_table();
     
     // clock.tic();
-    // table.group_by("stkcd", AggeragateOperation::COUNT);
+    // table._group_by("stkcd", AggeragateOperation::COUNT);
     // LUISA_INFO("group by in {} ms.", clock.toc());
 
     // table.print_table();

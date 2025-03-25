@@ -542,7 +542,7 @@ public:
     luisa::compute::Shader1D<BufferIndex, BufferIndex, BufferIndex, uint> adjacent_diff_index_shader;
     luisa::compute::Shader1D<BufferIndex, BufferIndex> unique_count_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, BufferIndex, luisa::compute::Buffer<float>> sum_to_mean_shader;
-    luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> apply_shader;
+    // luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> apply_shader;
 
     luisa::compute::Shader2D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, luisa::compute::Buffer<uint>, Bitmap, Bitmap, Bitmap> join_count_shader;
     luisa::compute::Shader2D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, luisa::compute::Buffer<uint>, Bitmap, Bitmap, Bitmap, uint> outer_join_count_shader;
@@ -574,6 +574,8 @@ public:
     luisa::compute::Shader1D<uint, luisa::compute::Buffer<T>, Bitmap, Hashmap<T>, BufferIndex, BufferIndex, BufferIndex, BufferIndex> join_reindex_hashmap_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, Hashmap<T>, BufferIndex, BufferIndex, BufferIndex> join_hashmap_filter_shader;
 
+    luisa::unordered_map<void*, luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>>> apply_shader_cache;
+
     static ShaderCollector *get_instance(luisa::compute::Device &device) {
         if (instance == nullptr) {
             instance = new ShaderCollector(device);
@@ -585,11 +587,16 @@ public:
         using namespace luisa;
         using namespace luisa::compute;
 
+        if (apply_shader_cache.find(apply_func_ptr) != apply_shader_cache.end()) return;
+
         auto apply_func = *reinterpret_cast<Callable<T(T)>*>(apply_func_ptr);
 
-        apply_shader = device.compile<1>([&](BufferVar<T> dst, BufferVar<T> src){
-            auto x = dispatch_x();
-            dst.write(x, apply_func(src.read(x)));
+        apply_shader_cache.insert({
+            apply_func_ptr,
+            device.compile<1>([&](BufferVar<T> dst, BufferVar<T> src){
+                auto x = dispatch_x();
+                dst.write(x, apply_func(src.read(x)));
+            })
         });
     }
 

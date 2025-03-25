@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
 
     table.print_table();
     // table.apply("clsprc", apply_func1);
-    table.group_by("id", agg_op_map);
+    table._group_by("id", agg_op_map);
     // LUISA_INFO("Time: {} ms", clock.toc());
     table.print_table();
     // table.apply("clsprc", apply_func1);

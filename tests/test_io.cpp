@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
         auto t = table.query();
         clock.tic();
         t.where("Stkcd", FilterOp::LESS_EQUAL, std::stoi(cmd))
-            ->group_by("Stkcd", agg_op_map)
+            ->_group_by("Stkcd", agg_op_map)
             ->sort("Stkcd", SortOrder::Descending);
         LUISA_INFO("where & sort in {} ms", clock.toc());
         t.print_table();

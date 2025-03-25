@@ -55,7 +55,9 @@ int main(int argc, char *argv[]) {
     // agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     agg_op_map.insert({"Clsprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     agg_op_map.insert({"Opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
-
+    Callable apply_func = [](Int a) {
+        return a * def(2);
+    };
     while (true) {
         std::string cmd, col;
         std::cin >> cmd;
@@ -80,6 +82,15 @@ int main(int argc, char *argv[]) {
             clock.tic();
             auto t3 = t1.hashmap_join(t2, "Stkcd", "Stkcd", JoinType::LEFT);
             // t3.print_table();
+        } else if (cmd == "apply") {
+            auto col = table.apply("Stkcd", apply_func);
+            // table.print_table();
+        } else if (cmd == "group") {
+            auto t = table.group_by("Stkcd", {AggeragateOp::SUM, AggeragateOp::COUNT, AggeragateOp::MEAN});
+            t.print_table();
+        } else if (cmd == "interval") {
+            auto t = table.interval("Stkcd", "", 60*60*24*7, {AggeragateOp::MEAN});
+            t.print_table();
         }
         stream << synchronize();
         LUISA_INFO("Op {} in {} ms", cmd, clock.toc());

@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
         clock.tic();
         auto t = table.query();
         t._hashmap_join(table2, "id", "id2", jt);
-        // t.group_by("id", {AggeragateOp::SUM, AggeragateOp::COUNT, AggeragateOp::MEAN});
+        // t._group_by("id", {AggeragateOp::SUM, AggeragateOp::COUNT, AggeragateOp::MEAN});
         stream << synchronize();
         LUISA_INFO("hashmap join in {} ms", clock.toc());
         t.print_table_length();
@@ -137,14 +137,14 @@ int main(int argc, char *argv[]) {
         clock.tic();
         auto t2 = table.query();
         t2._join(table2, "id", "id2", jt);
-        // t2.group_by("id", {AggeragateOp::SUM, AggeragateOp::COUNT, AggeragateOp::MEAN});
+        // t2._group_by("id", {AggeragateOp::SUM, AggeragateOp::COUNT, AggeragateOp::MEAN});
         stream << synchronize();
         LUISA_INFO("join in {} ms", clock.toc());
         t.print_table_length();
         // t2.print_table();
 
 
-        // t.group_by("id",{AggeragateOp::MAX, AggeragateOp::COUNT, AggeragateOp::MEAN, AggeragateOp::SUM});
+        // t._group_by("id",{AggeragateOp::MAX, AggeragateOp::COUNT, AggeragateOp::MEAN, AggeragateOp::SUM});
         // LUISA_INFO("where in {} ms", clock.toc());
 
         // t.print_table();
@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
     // agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN, AggeragateOp::COUNT, AggeragateOp::MEAN}});
     // // agg_op_map.insert({"opnprc", {AggeragateOp::SUM, AggeragateOp::MAX, AggeragateOp::MIN}});
     // clock.tic();
-    // table.query().group_by(argv[6], agg_op_map)->print_table();
+    // table.query()._group_by(argv[6], agg_op_map)->print_table();
     // LUISA_INFO("group by in {} ms", clock.toc());
     // table.print_table();
 
