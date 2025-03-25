@@ -79,7 +79,7 @@ inline auto adjacent_diff_buffer(luisa::compute::Device &device, luisa::compute:
 
 }
 // template <class T>
-// BufferBase inverse_reindex(Device &device, Stream &stream, const BufferView<T> &data, const BufferViewIndex &indices, size_t res_size = 0) {
+// BufferBase _inverse_reindex(Device &device, Stream &stream, const BufferView<T> &data, const BufferViewIndex &indices, size_t res_size = 0) {
 //     LUISA_ASSERT(indices.size() <= data.size(), "indices' length must be less than data's.");
 //     LUISA_ASSERT(indices.size() > 0 && data.size() > 0, "invoke reindex must be non-empty.");
 //     BufferBase result;
@@ -100,7 +100,7 @@ inline auto adjacent_diff_buffer(luisa::compute::Device &device, luisa::compute:
 //     return std::move(result);
 // }
 
-struct inverse_reindex {
+struct _inverse_reindex {
     template <class T>
     void operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, BufferIndex &indices) {
         using namespace luisa;
@@ -122,6 +122,33 @@ struct inverse_reindex {
             data._null_mask = std::move(null_mask);
         }
         data.load(std::move(res_buf));
+    }
+};
+
+struct inverse_reindex {
+    template <class T>
+    Column operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, BufferIndex &indices) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        if (indices.size() == 0) {
+            return Column{data.dtype()};
+        }
+        BufferBase res_buf = device.create_buffer<BaseType>(indices.size() * sizeof(T) / sizeof(BaseType));
+        auto dst_view = res_buf.view().as<T>();
+        auto src_view = data.view<T>();
+        stream << ShaderCollector<T>::get_instance(device)->inverse_reindex_shader(dst_view, src_view, indices).dispatch(indices.size());
+
+        Column result{data.dtype()};
+
+        if (data._null_mask._data.size() != 0) {
+            Bitmap null_mask;
+            null_mask.init_zero(device, stream, indices.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+            stream << ShaderCollector<T>::get_instance(device)->inverse_reindex_bitmap_shader(null_mask, data._null_mask, indices).dispatch(indices.size());
+            result._null_mask = std::move(null_mask);
+        }
+        result.load(std::move(res_buf));
+        return std::move(result);
     }
 };
 
@@ -603,9 +630,10 @@ struct join_reindex_col {
 void inline fill_join_result(luisa::compute::Device &device, luisa::compute::Stream &stream, BufferIndex &indices, luisa::unordered_map<luisa::string, Column> &data, luisa::unordered_map<luisa::string, Column> &result) {
     for (auto it = data.begin(); it != data.end(); ++it) {
         auto name = it->first;
-        if (result.find(name) != result.end()) {
-            LUISA_WARNING("JOIN INTERUPT: Join two table should NOT have the same column name [{}]", name);
-            return;
+        while (result.find(name) != result.end()) {
+            name += "_l";
+            // LUISA_WARNING("JOIN INTERUPT: Join two table should NOT have the same column name [{}]", name);
+            // return;
         }
         auto res_col = type_dispatcher(it->second.dtype().id(), join_reindex_col{}, device, stream, indices, it->second);
         result.insert({name, std::move(res_col)});

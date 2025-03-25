@@ -29,5 +29,6 @@ function(luisa_dataframe_add_executable name)
     target_link_libraries(${name} PRIVATE luisa::compute dataframe)
 endfunction ()
 
-add_subdirectory(tests)
+# add_subdirectory(tests)
+add_subdirectory(benchmark)
 

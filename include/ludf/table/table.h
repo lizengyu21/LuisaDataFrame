@@ -39,7 +39,6 @@ public:
         ShaderCollector<id_to_type<TypeId::FLOAT32>>::get_instance(_device);
         ShaderCollector<id_to_type<TypeId::INT32>>::get_instance(_device);
         ShaderCollector<id_to_type<TypeId::UINT32>>::get_instance(_device);
-        
     }
 
     void append_column(const luisa::string &name, void *data, size_t size_byte) {
@@ -199,7 +198,7 @@ public:
             Column &current_col = cur_kv->second;
             const auto &current_col_type = current_col.dtype();
 
-            type_dispatcher(current_col_type, inverse_reindex{}, _device, _stream, current_col, indices);
+            type_dispatcher(current_col_type, _inverse_reindex{}, _device, _stream, current_col, indices);
             for (const auto &agg_op : it->second) {
                 string new_col_name = agg_op_string(agg_op) + "(" + current_col_name + ")";
 
@@ -229,16 +228,30 @@ public:
         return this;
     }
 
-    Table *where(const luisa::string &name, const FilterOp op, std::any threshold) {
+    Table *_where(const luisa::string &name, const FilterOp op, std::any threshold) {
         if (_columns.find(name) == _columns.end()) return this;
         Column &col = _columns[name];
         const auto &type = col.dtype();
         auto reindex = type_dispatcher(type, make_inverse_reindex{}, _device, _stream, col, op, threshold);
         for (auto it = _columns.begin(); it != _columns.end(); ++it) {
-            type_dispatcher(it->second.dtype(), inverse_reindex{}, _device, _stream, it->second, reindex);
+            type_dispatcher(it->second.dtype(), _inverse_reindex{}, _device, _stream, it->second, reindex);
         }
         return this;
     }
+
+    Table where(const luisa::string &name, const FilterOp op, std::any threshold) {
+        if (_columns.find(name) == _columns.end()) return Table{_device, _stream};
+        Column &col = _columns[name];
+        const auto &type = col.dtype();
+        auto reindex = type_dispatcher(type, make_inverse_reindex{}, _device, _stream, col, op, threshold);
+        Table result{_device, _stream};
+        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+            result.create_column(it->first, type_dispatcher(it->second.dtype(), inverse_reindex{}, _device, _stream, it->second, reindex));
+        }
+        return std::move(result);
+    }
+
+
 
     Table *group_by(const luisa::string &name, const luisa::vector<AggeragateOp> &agg_op_vec = {}) {
         using namespace luisa;
@@ -275,7 +288,6 @@ public:
             _stream << ShaderCollector<uint>::get_instance(_device)->filter_set_shader(inclusive_sum_result, sorted_result._null_mask, UINT_NULL).dispatch(inclusive_sum_result.size());
 
 
-        // type_dispatcher(type, inverse_reindex{}, _device, _stream, col, indices);
         col = std::move(sorted_result);
         type_dispatcher(type, reindex{}, _device, _stream, col, inclusive_sum_result, num_group);
         luisa::unordered_map<luisa::string, Column> res_columns;
@@ -293,7 +305,7 @@ public:
             Column &current_col = cur_kv->second;
             const auto &current_col_type = current_col.dtype();
 
-            type_dispatcher(current_col_type, inverse_reindex{}, _device, _stream, current_col, indices);
+            type_dispatcher(current_col_type, _inverse_reindex{}, _device, _stream, current_col, indices);
             for (const auto &agg_op : it->second) {
                 string new_col_name = agg_op_string(agg_op) + "(" + current_col_name + ")";
                 // print_buffer(_stream, current_col._null_mask._data.view());
@@ -328,7 +340,7 @@ public:
 
     }
 
-    Table *sort(const luisa::string &name, SortOrder order) {
+    Table *_sort(const luisa::string &name, SortOrder order) {
         if (_columns.find(name) == _columns.end()) return this;
         using namespace luisa;
         using namespace luisa::compute;
@@ -344,15 +356,40 @@ public:
             if (name == it->first) continue;
             Column &current_col = it->second;
             const auto &current_col_type = current_col.dtype();
-            type_dispatcher(current_col_type, inverse_reindex{}, _device, _stream, current_col, indices);
+            type_dispatcher(current_col_type, _inverse_reindex{}, _device, _stream, current_col, indices);
         }
 
         _columns[name] = std::move(sorted_result);
         return this;
     }
 
+    Table sort(const luisa::string &name, SortOrder order) {
+        if (_columns.find(name) == _columns.end()) return Table{_device, _stream};
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        Column &col = _columns[name];
+        if (col.size() == 0) return Table{_device, _stream};
+
+        const auto &type = col.dtype();
+        Column sorted_result{type};
+        auto indices = type_dispatcher(type, sort_column{}, _device, _stream, col, sorted_result, order);
+
+        Table result{_device, _stream};
+        result.create_column(name, std::move(sorted_result));
+
+        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+            if (name == it->first) continue;
+            Column &current_col = it->second;
+            const auto &current_col_type = current_col.dtype();
+            result.create_column(it->first, type_dispatcher(current_col_type, inverse_reindex{}, _device, _stream, current_col, indices));
+        }
+
+        return std::move(result);
+    }
+
     template <class T>
-    Table *apply(const luisa::string &name, luisa::compute::Callable<T(T)> &apply_func) {
+    Table *_apply(const luisa::string &name, luisa::compute::Callable<T(T)> &apply_func) {
         if (_columns.find(name) == _columns.end()) return this;
         using namespace luisa;
         using namespace luisa::compute;
@@ -373,7 +410,7 @@ public:
     }
 
     template <class Ret, class T, std::enable_if_t<!std::is_same_v<Ret, T>, int> = 0>
-    Table *apply(const luisa::string &name, luisa::compute::Callable<Ret(T)> &apply_func, TypeId ret_type_id = TypeId::EMPTY) {
+    Table *_apply(const luisa::string &name, luisa::compute::Callable<Ret(T)> &apply_func, TypeId ret_type_id = TypeId::EMPTY) {
         if (_columns.find(name) == _columns.end()) return this;
         using namespace luisa;
         using namespace luisa::compute;
@@ -394,7 +431,7 @@ public:
         return this;
     }
 
-    Table *join(Table &other, const luisa::string &col_left, const luisa::string &col_right, const JoinType &join_type = JoinType::LEFT) {
+    Table *_join(Table &other, const luisa::string &col_left, const luisa::string &col_right, const JoinType &join_type = JoinType::LEFT) {
         if (_columns.find(col_left) == _columns.end() || other._columns.find(col_right) == other._columns.end()) {
             LUISA_WARNING("JOIN SKIP: column not found. left: {}, right: {}", col_left, col_right);
             return this;
@@ -442,7 +479,56 @@ public:
         return this;
     }
 
-    Table *hashmap_join(Table &other, const luisa::string &col_left, const luisa::string &col_right, const JoinType &join_type = JoinType::LEFT) {
+    Table join(Table &other, const luisa::string &col_left, const luisa::string &col_right, const JoinType &join_type = JoinType::LEFT) {
+        if (_columns.find(col_left) == _columns.end() || other._columns.find(col_right) == other._columns.end()) {
+            LUISA_WARNING("JOIN SKIP: column not found. left: {}, right: {}", col_left, col_right);
+            return Table{_device, _stream};
+        }
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        Column &left_col = _columns[col_left];
+        Column &right_col = other._columns[col_right];
+
+        if (left_col.dtype() != right_col.dtype()) {
+            LUISA_WARNING("JOIN SKIP: column type not match. left: {}, right: {}", type_id_string(left_col.dtype().id()), type_id_string(right_col.dtype().id()));
+            return Table{_device, _stream};
+        }
+
+        auto type = left_col.dtype().id();
+        BufferIndex index_left, index_right;
+
+        // Buffer<JoinIndex> join_result;
+        if (join_type == JoinType::LEFT) {
+            std::tie(index_left, index_right) = type_dispatcher(type, left_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::RIGHT) {
+            std::tie(index_left, index_right) = type_dispatcher(type, right_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::INNER) {
+            std::tie(index_left, index_right) = type_dispatcher(type, inner_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::OUTER) {
+            std::tie(index_left, index_right) = type_dispatcher(type, outer_join{}, _device, _stream, left_col, right_col);
+        }  else {
+            LUISA_WARNING("Unsupported Join Type!");
+            return Table{_device, _stream};
+        }
+
+        // print_buffer(_stream, index_left.view());
+        // print_buffer(_stream, index_right.view());
+        
+        luisa::unordered_map<luisa::string, Column> join_result;
+        if (join_type == JoinType::RIGHT) {
+            fill_join_result(_device, _stream, index_right, other._columns, join_result);
+            fill_join_result(_device, _stream, index_left, this->_columns, join_result);
+        } else {
+            fill_join_result(_device, _stream, index_left, this->_columns, join_result);
+            fill_join_result(_device, _stream, index_right, other._columns, join_result);
+        }
+        Table result_table{_device, _stream};
+        result_table._columns = std::move(join_result);
+        return std::move(result_table);
+    }
+
+    Table *_hashmap_join(Table &other, const luisa::string &col_left, const luisa::string &col_right, const JoinType &join_type = JoinType::LEFT) {
         if (_columns.find(col_left) == _columns.end() || other._columns.find(col_right) == other._columns.end()) {
             LUISA_WARNING("JOIN SKIP: column not found. left: {}, right: {}", col_left, col_right);
             return this;
@@ -491,6 +577,60 @@ public:
         }
         _columns = std::move(join_result);
         return this;
+    }
+
+    Table hashmap_join(Table &other, const luisa::string &col_left, const luisa::string &col_right, const JoinType &join_type = JoinType::LEFT) {
+        if (_columns.find(col_left) == _columns.end() || other._columns.find(col_right) == other._columns.end()) {
+            LUISA_WARNING("JOIN SKIP: column not found. left: {}, right: {}", col_left, col_right);
+            return Table{_device, _stream};
+        }
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        Column &left_col = _columns[col_left];
+        Column &right_col = other._columns[col_right];
+
+        if (left_col.dtype() != right_col.dtype()) {
+            LUISA_WARNING("JOIN SKIP: column type not match. left: {}, right: {}", type_id_string(left_col.dtype().id()), type_id_string(right_col.dtype().id()));
+            return Table{_device, _stream};
+        }
+
+
+        Clock clock;
+
+        auto type = left_col.dtype().id();
+        BufferIndex index_left, index_right;
+
+        clock.tic();
+        if (join_type == JoinType::LEFT) {
+            std::tie(index_left, index_right) = type_dispatcher(type, hashmap_left_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::RIGHT) {
+            std::tie(index_left, index_right) = type_dispatcher(type, hashmap_right_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::INNER) {
+            std::tie(index_left, index_right) = type_dispatcher(type, inner_join{}, _device, _stream, left_col, right_col);
+        } else if (join_type == JoinType::OUTER) {
+            std::tie(index_left, index_right) = type_dispatcher(type, outer_join{}, _device, _stream, left_col, right_col);
+        }  else {
+            LUISA_WARNING("Unsupported Join Type!");
+            return Table{_device, _stream};
+        }
+        LUISA_INFO("get left & right indices in {} ms", clock.toc());
+
+        // print_buffer(_stream, index_left.view());
+        // print_buffer(_stream, index_right.view());
+        std::cout << "Length: " << index_left.size() << std::endl;
+        
+        luisa::unordered_map<luisa::string, Column> join_result;
+        if (join_type == JoinType::RIGHT) {
+            fill_join_result(_device, _stream, index_right, other._columns, join_result);
+            fill_join_result(_device, _stream, index_left, this->_columns, join_result);
+        } else {
+            fill_join_result(_device, _stream, index_left, this->_columns, join_result);
+            fill_join_result(_device, _stream, index_right, other._columns, join_result);
+        }
+        Table result_table{_device, _stream};
+        result_table._columns = std::move(join_result);
+        return std::move(result_table);
     }
 
     void print_table() {

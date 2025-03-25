@@ -127,7 +127,7 @@ int main(int argc, char *argv[]) {
         }
         clock.tic();
         auto t = table.query();
-        t.hashmap_join(table2, "id", "id2", jt);
+        t._hashmap_join(table2, "id", "id2", jt);
         // t.group_by("id", {AggeragateOp::SUM, AggeragateOp::COUNT, AggeragateOp::MEAN});
         stream << synchronize();
         LUISA_INFO("hashmap join in {} ms", clock.toc());
@@ -136,7 +136,7 @@ int main(int argc, char *argv[]) {
 
         clock.tic();
         auto t2 = table.query();
-        t2.join(table2, "id", "id2", jt);
+        t2._join(table2, "id", "id2", jt);
         // t2.group_by("id", {AggeragateOp::SUM, AggeragateOp::COUNT, AggeragateOp::MEAN});
         stream << synchronize();
         LUISA_INFO("join in {} ms", clock.toc());
