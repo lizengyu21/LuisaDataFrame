@@ -2,6 +2,7 @@
 # luisa_dataframe_add_executable(test_io test_io.cpp)
 # luisa_dataframe_add_executable(test_bitmap test_bitmap.cpp)
 luisa_dataframe_add_executable(benchmark benchmark.cpp)
+luisa_dataframe_add_executable(ablation ablation.cpp)
 # luisa_dataframe_add_executable(test_hashmap test_hashmap.cpp)
 # luisa_dataframe_add_executable(test_interval test_interval.cpp)
 # luisa_dataframe_add_executable(test_where test_where.cpp)
