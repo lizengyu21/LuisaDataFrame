@@ -362,8 +362,17 @@ struct apply_on_column_T {
         BufferView<T> data_view = col.view<T>();
         BufferBase result = device.create_buffer<BaseType>(col.size() * sizeof(T) / sizeof(BaseType));
 
-        ShaderCollector<T>::get_instance(device)->create_apply_shader(device, apply_func_ptr);
-        stream << ShaderCollector<T>::get_instance(device)->apply_shader_cache[apply_func_ptr](result.view().as<T>(), data_view).dispatch(col.size());
+        #ifdef NO_MEMORY_CACHE
+            auto apply_func = *reinterpret_cast<Callable<T(T)>*>(apply_func_ptr);
+            auto shader = device.compile<1>([&](BufferVar<T> dst, BufferVar<T> src){
+                auto x = dispatch_x();
+                dst.write(x, apply_func(src.read(x)));
+            });
+            stream << shader(result.view().as<T>(), data_view).dispatch(col.size());
+        #else
+            ShaderCollector<T>::get_instance(device)->create_apply_shader(device, apply_func_ptr);
+            stream << ShaderCollector<T>::get_instance(device)->apply_shader_cache[apply_func_ptr](result.view().as<T>(), data_view).dispatch(col.size());
+        #endif
         return Column{std::move(result), col.dtype()};
     }
 };

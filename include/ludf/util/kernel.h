@@ -5,6 +5,19 @@
 #include <ludf/core/hashmap.h>
 #include <ludf/core/bitmap.h>
 
+#ifdef NO_MEMORY_CACHE
+    double avg_load_delay = 0;
+    uint load_count = 0;
+
+    inline double get_delay() {
+        uint tmp = load_count;
+        load_count = 0;
+        return avg_load_delay * static_cast<double>(tmp);
+    }
+#endif
+
+
+
 template <class T>
 class ShaderCollector {
 private:
@@ -43,7 +56,10 @@ private:
     ShaderCollector(luisa::compute::Device &device) {
         using namespace luisa;
         using namespace luisa::compute;
-        
+        #ifdef NO_MEMORY_CACHE
+            Clock clock;
+            clock.tic();
+        #endif
         reset_shader = device.compile<1>([](BufferVar<T> counter) {
             counter.write(dispatch_x(), cast<T>(0));
         });
@@ -521,11 +537,15 @@ private:
 
         #undef CREATE_AGG_SHADER
 
+        #ifdef NO_MEMORY_CACHE
+            avg_load_delay = clock.toc() / static_cast<double>(48);
+            LUISA_INFO("average load delay {} ms", avg_load_delay);
+        #endif
     }
 
     static ShaderCollector *instance;
 public:
-
+    
     luisa::compute::Shader1D<luisa::compute::Buffer<T>> reset_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, T> set_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, T> filter_set_shader;
@@ -580,6 +600,9 @@ public:
         if (instance == nullptr) {
             instance = new ShaderCollector(device);
         }
+        #ifdef NO_MEMORY_CACHE
+            ++load_count;
+        #endif
         return instance;
     }
 
@@ -616,6 +639,7 @@ public:
     }
 };
 
+
 #define INSTANTIATE_SHADER(TYPE) template <> ShaderCollector<id_to_type<TYPE>> *ShaderCollector<id_to_type<TYPE>>::instance = nullptr;
 
 INSTANTIATE_SHADER(TypeId::INT32)
@@ -624,3 +648,4 @@ INSTANTIATE_SHADER(TypeId::UINT32)
 // INSTANTIATE_SHADER(TypeId::INT64)
 
 #undef INSTANTIATE_SHADER
+
