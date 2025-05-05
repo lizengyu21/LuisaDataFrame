@@ -17,6 +17,10 @@ class Table {
         _columns.insert({name, std::move(col)});
     }
 
+    void _clear() {
+        _columns.clear();
+    }
+
 public:
     luisa::unordered_map<luisa::string, Column> _columns;
 
@@ -25,6 +29,22 @@ public:
     void create_column(const luisa::string &name, DataType dtype) {
         if (_columns.find(name) != _columns.end()) return;
         _columns.insert({name, Column{dtype}});
+    }
+
+    template <class T>
+    void create_column(const luisa::string &name, DataType dtype,  luisa::vector<T> data) {
+        create_column(name, dtype);
+        append_column(name, data);
+    }
+
+    void create_table(luisa::unordered_map<luisa::string, std::pair<size_t, void *>> data, luisa::unordered_map<luisa::string, TypeId> type) {
+        _clear();
+        for (auto it = data.begin(); it != data.end(); ++it) {
+            if (type.find(it->first) == type.end()) continue;
+            auto t = type[it->first];
+            create_column(it->first, t);
+            append_column(it->first, it->second.second, it->second.first * id_to_size(t));
+        }
     }
 
     Table query() {
@@ -672,6 +692,20 @@ public:
         return apply_on_column_T{}.operator()<T>(_device, _stream, col, reinterpret_cast<void *>(&apply_func));
     }
 
+    template <class T>
+    Column apply(Column &lhs, Column &rhs, luisa::compute::Callable<T(T, T)> &apply_func) {
+        if (lhs.dtype() != rhs.dtype()) {
+            LUISA_WARNING("APPLY SKIP: encouter different type -- LEFT_TYPE: {} <==> RIGHT_TYPE: {}", type_id_string(lhs.dtype().id()), type_id_string(rhs.dtype().id()));
+            return Column{};
+        }
+        if (lhs.size() != rhs.size()) {
+            LUISA_WARNING("APPLY SKIP: encouter different length -- LEFT_SIZE: {} <==> RIGHT_SIZE: {}", lhs.size(), rhs.size());
+            return Column{};
+        }
+
+        return Column{};
+    }
+
 
     template <class Ret, class T, std::enable_if_t<!std::is_same_v<Ret, T>, int> = 0>
     Table *_apply(const luisa::string &name, luisa::compute::Callable<Ret(T)> &apply_func, TypeId ret_type_id = TypeId::EMPTY) {
@@ -903,4 +937,11 @@ public:
     void print_table_length() {
         printer.print_length(_columns);
     }
+    Column &operator[](const luisa::string &idx) {
+        return _columns[idx];
+    }
+
+    // void create_from_dict(const luisa::unordered_map<luisa::string, luisa::vector<int>> dict) {
+
+    // }
 };

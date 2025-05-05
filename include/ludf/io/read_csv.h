@@ -176,24 +176,24 @@ inline void convert_data(Table &table, luisa::unordered_map<luisa::string, luisa
     }
 }
 
-// inline void read_csv(const luisa::string &filename, Table &table) {
-//     std::ifstream file(filename.c_str());
-//     if (!file.is_open()) {
-//         LUISA_WARNING("Cannot open file {}", filename);
-//         return;
-//     }
+inline void read_csv(const luisa::string &filename, Table &table) {
+    std::ifstream file(filename.c_str());
+    if (!file.is_open()) {
+        LUISA_WARNING("Cannot open file {}", filename);
+        return;
+    }
 
-//     luisa::unordered_map<luisa::string, luisa::vector<luisa::string>> data;
-//     luisa::unordered_map<luisa::string, TypeId> type;
-//     parse_csv(file, data);
-//     parse_type(data, type);
+    luisa::unordered_map<luisa::string, luisa::vector<luisa::string>> data;
+    luisa::unordered_map<luisa::string, TypeId> type;
+    parse_csv(file, data);
+    parse_type(data, type);
 
-//     for (auto &pair : type) {
-//         table.create_column(pair.first, pair.second);
-//     }
+    for (auto &pair : type) {
+        table.create_column(pair.first, pair.second);
+    }
 
-//     convert_data(table, data, type);
-// }
+    convert_data(table, data, type);
+}
 
 inline void read_csv(const luisa::string &filename, Table &table, luisa::unordered_map<luisa::string, TypeId> type) {
     std::ifstream file(filename.c_str());
