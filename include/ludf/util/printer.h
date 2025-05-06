@@ -130,6 +130,10 @@ struct Printer {
         unordered_map<string, size_t> col_max_len;
         auto print_len = std::min(len, max_rows);
         bool overflow = max_rows < len;
+        if (max_rows == 0) {
+            print_len = len;
+            overflow = false;
+        }
         for (auto &it : col_type) {
             col_max_len[it.first] = std::max(it.first.length(), 4ul);
             type_dispatcher(it.second, get_width{}, col_data[it.first], col_null_mask[it.first], print_len, col_max_len[it.first], it.second);
@@ -148,7 +152,7 @@ struct Printer {
             if (it == col_max_len.cbegin()) std::cout << "+";
             std::cout << std::string(it->second + 2, '-') << "+";
         }
-        std::cout << "\n";
+        if (!col_max_len.empty()) std::cout << "\n";
     }
 
     void header(const luisa::unordered_map<luisa::string, size_t> &col_max_len) {
@@ -156,7 +160,7 @@ struct Printer {
         for (auto &it : col_max_len) {
             std::cout << "| " << std::setw(it.second) << std::left << it.first << " ";
         }
-        std::cout << "|\n";
+        if (!col_max_len.empty()) std::cout << "|\n";
         border(col_max_len);
     }
 

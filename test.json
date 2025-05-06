@@ -1,0 +1,11 @@
+{
+    "metadata": {
+        "test_rounds": 100,
+        "data_size": 1000000,
+        "timestamp": "1746547012"
+    },
+    "Result": {
+        "WeeklyReturn": 72.6774,
+        "DailyReturn": 45.0536
+    }
+}

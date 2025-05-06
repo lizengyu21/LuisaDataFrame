@@ -206,9 +206,11 @@ inline void read_csv(const luisa::string &filename, Table &table, luisa::unorder
 
     luisa::vector<luisa::string> col_name;
     luisa::unordered_map<luisa::string, luisa::vector<int>> col_data;
+    luisa::unordered_map<luisa::string, luisa::vector<uint>> col_mask;
 
     bool first_row = true;
 
+    uint row_count = 0;
     for (auto& row : parser) {
         if (first_row) {
             size_t col_count= row.size();
@@ -226,32 +228,40 @@ inline void read_csv(const luisa::string &filename, Table &table, luisa::unorder
             first_row = false;
             continue;
         }
-
         int i = 0;
         for (auto& field : row) {
             auto name = col_name[i++];
             auto t = type[name];
-            if (t == TypeId::TIMESTAMP) {
-                auto ts = parse_time_to_timestamp(field);
-                col_data[name].push_back(*reinterpret_cast<int*>(&ts));
-            } else if (t == TypeId::INT32) {
-                col_data[name].push_back(std::stoi(field));
-            } else if (t == TypeId::FLOAT32) {
-                float fdata = std::stof(field);
-                col_data[name].push_back(*reinterpret_cast<int*>(&fdata));
-            } else if (t == TypeId::UINT32) {
-                uint udata = std::stoi(field);
-                col_data[name].push_back(*reinterpret_cast<int*>(&udata));
-            } else {
-                LUISA_WARNING("Unsupported type.");
-                return;
+            try {
+                if (t == TypeId::TIMESTAMP) {
+                    auto ts = parse_time_to_timestamp(field);
+                    col_data[name].push_back(*reinterpret_cast<int*>(&ts));
+                } else if (t == TypeId::INT32) {
+                    col_data[name].push_back(std::stoi(field));
+                } else if (t == TypeId::FLOAT32) {
+                    float fdata = std::stof(field);
+                    col_data[name].push_back(*reinterpret_cast<int*>(&fdata));
+                } else if (t == TypeId::UINT32) {
+                    uint udata = std::stoi(field);
+                    col_data[name].push_back(*reinterpret_cast<int*>(&udata));
+                } else {
+                    LUISA_WARNING("Unsupported type.");
+                    return;
+                }
+            } catch(...) {
+                col_data[name].push_back(-1);
+                col_mask[name].push_back(row_count);
             }
-        } 
+        }
+        ++row_count;
     }
 
     for (auto &name : col_name) {
         table.create_column(name, type[name]);
         table.append_column(name, col_data[name]);
+        if (col_mask.find(name) == col_mask.end()) continue;
+        LUISA_INFO("set null mask for col {}", name);
+        table.set_col_null_mask(name, col_mask[name]);
     }
 }
 

@@ -1,4 +1,3 @@
-
 #include <ludf/core/type.h>
 #include <ludf/core/type_dispatcher.h>
 #include <ludf/column/column.h>
@@ -10,6 +9,35 @@
 #include <luisa/luisa-compute.h>
 #include <luisa/dsl/sugar.h>
 #include <luisa/dsl/syntax.h>
+#include <unordered_map>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
+
+// convert std::unordered_map<std::string, std::unordered_map<std::string, double>> result to json string
+std::stringstream convert_to_json(const std::unordered_map<std::string, std::unordered_map<std::string, double>> &results, const int &test_rounds, const int &data_size) {
+    std::stringstream json_ss;
+    json_ss << "{";
+    // print meta data
+    json_ss << "\n    \"metadata\": {";
+    json_ss << "\n        \"test_rounds\": " << test_rounds << ",";
+    json_ss << "\n        \"data_size\": " << data_size << ",";
+    json_ss << "\n        \"timestamp\": \"" << std::time(nullptr) << "\"";
+    json_ss << "\n    },";
+    // print results
+    for (const auto &outer_pair : results) {
+        json_ss << "\n    \"" << outer_pair.first << "\": {";
+        for (const auto &inner_pair : outer_pair.second) {
+            json_ss << "\n        \"" << inner_pair.first << "\": " << inner_pair.second << ",";
+        }
+        json_ss.seekp(-1, json_ss.cur); // remove last comma
+        json_ss << "\n    },";
+    }
+    json_ss.seekp(-1, json_ss.cur); // remove last comma
+    json_ss << "\n}";
+    return json_ss;
+}
 
 using namespace luisa;
 using namespace luisa::compute;
@@ -34,48 +62,74 @@ int main(int argc, char *argv[]) {
 
     // 数据加载
     clock.tic();
-    // unordered_map<string, TypeId> type = {
-    //     {"Stkcd", TypeId::INT32},
-    //     {"Trddt", TypeId::TIMESTAMP},
-    //     {"Opnprc", TypeId::FLOAT32},
-    //     {"Hiprc", TypeId::FLOAT32},
-    //     {"Loprc", TypeId::FLOAT32},
-    //     {"Clsprc", TypeId::FLOAT32}
-    // };
-    // read_csv("./data/TRD_Dalyr0.csv", table, type);
+    unordered_map<string, TypeId> type = {
+        {"Stkcd", TypeId::INT32},
+        {"Trddt", TypeId::TIMESTAMP},
+        {"Opnprc", TypeId::FLOAT32},
+        {"Hiprc", TypeId::FLOAT32},
+        {"Loprc", TypeId::FLOAT32},
+        {"Clsprc", TypeId::FLOAT32},
+        {"PrevClsprc", TypeId::FLOAT32},
+    };
+    read_csv("./data/TRD_Dalyr_with_PrevClsprc.csv", table, type);
     double load_time = clock.toc();
     LUISA_INFO("load csv data in {} ms", load_time);
 
+    int test_round = 100;
+    size_t data_size = table._columns.begin()->second.size();
 
-    vector<int> a = {0, 2, 4, 5};
-    vector<float> b = {1.0, 2.1, 1, 5};
-
-    unordered_map<string, std::pair<size_t, void *>> data;
-    data["int"] = {a.size(), a.data()};
-    data["float"] = {b.size(), b.data()};
-    unordered_map<string, TypeId> type;
-    type["int"] = TypeId::INT32;
-    type["float"] = TypeId::FLOAT32;
-
-    table.create_table(data, type);
-    // table.create_column("int", TypeId::INT32, a);
-    // table.create_column("float", TypeId::INT32, b);
-
-    table.print_table();
-
-    // auto &c = table["Trddt"];
-    // std::cout << type_id_string(c.dtype().id()) << std::endl;
+    // 存储基准测试结果
+    std::unordered_map<std::string, std::unordered_map<std::string, double>> results;
+    Callable apply_func = [](Float cls, Float prev_cls) {
+        return (cls - prev_cls) / prev_cls * 100.0f;
+    };
+    auto agg_op_map = unordered_map<string, vector<AggeragateOp>>();
+    agg_op_map.insert({"DailyReturn", {AggeragateOp::MEAN, AggeragateOp::MAX}});
+    agg_op_map.insert({"Trddt", {AggeragateOp::COUNT}});
 
 
+    clock.tic();
+    for (int i = 0; i < test_round; ++i) {
+        auto res = table.apply("Clsprc", "PrevClsprc", apply_func);
+        table["DailyReturn"] = std::move(res);
+        auto filtered_table = table.where("DailyReturn", FilterOp::GREATER, 2.0f);
 
+        auto agg_table = filtered_table.group_by("Stkcd", agg_op_map);
+        agg_table._sort("MEAN(DailyReturn)", SortOrder::Descending);
+        // agg_table.print_table();
+    }
+    stream << synchronize();
+    results["Result"]["DailyReturn"] = clock.toc() / static_cast<double>(test_round);
 
+    table.erase("DailyReturn");
+    agg_op_map.clear();
+    agg_op_map.insert({"WeeklyReturn", {AggeragateOp::MEAN, AggeragateOp::MAX, AggeragateOp::COUNT}});
+    clock.tic();
+    for (int i = 0; i < test_round; ++i) {
+        auto week_data = table.interval("Stkcd", "", 60*60*24*7, {AggeragateOp::MEAN});
+        auto res = week_data.apply("MEAN(Clsprc)", "MEAN(PrevClsprc)", apply_func);
+        week_data["WeeklyReturn"] = std::move(res);
+        auto filtered_table = week_data.where("WeeklyReturn", FilterOp::GREATER, 2.0f);
+        auto agg_table = filtered_table.group_by("Stkcd", agg_op_map);
+        agg_table._sort("WeeklyReturn", SortOrder::Descending);
+        // agg_table.print_table();
+    }
+    stream << synchronize();
+    results["Result"]["WeeklyReturn"] = clock.toc() / static_cast<double>(test_round);
 
-    // auto &lhs = table._columns["Clsprc"];
-    // auto &rhs = table._columns["Hiprc"];
+    auto json_ss = convert_to_json(results, test_round, data_size);
 
-    // Callable apply_func = [](Float a, Float b) { return a + b + def(100.0f); };
+    // 写入文件
+    std::string json_filename = "./test.json";
 
-    // table.apply(lhs, rhs, apply_func);
+    std::ofstream file(json_filename);
+    if (file.is_open()) {
+        file << json_ss.str();
+        file.close();
+        std::cout << "Benchmark results saved to " << json_filename << "\n";
+    } else {
+        std::cerr << "Error opening file for writing: " << json_filename << "\n";
+    }
 
-    std::cout << "End.\n";
+    return 0;
 }

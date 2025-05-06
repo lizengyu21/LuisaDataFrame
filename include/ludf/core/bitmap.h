@@ -12,14 +12,18 @@ struct Bitmap {
         _size = size;
     }
 
-    // void init(luisa::compute::Device &device, luisa::compute::Stream &stream, uint size, uint init_data) {
-    //     init(device, size);
-    //     stream << ShaderCollector<uint>::get_instance(device)->set_shader(_data, init_data).dispatch(_data.size());
-    // }
-
     void init_zero(luisa::compute::Device &device, luisa::compute::Stream &stream, uint size, auto &&shader) {
         init(device, size);
         stream << shader(_data, 0u).dispatch(_data.size());
+    }
+
+    Bitmap copy(luisa::compute::Device &device, luisa::compute::Stream &stream) {
+        Bitmap tmp;
+        if (_data.size() == 0) return std::move(tmp);
+        tmp._data = device.create_buffer<uint>(_data.size());
+        tmp._size = _size;
+        stream << tmp._data.copy_from(_data);
+        return std::move(tmp);
     }
 
     // void init_one(luisa::compute::Device &device, luisa::compute::Stream &stream, uint size) {

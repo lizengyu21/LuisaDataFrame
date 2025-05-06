@@ -352,6 +352,31 @@ struct _apply_on_column_T {
     }
 };
 
+struct apply_on_two_column_T {
+    template <class T>
+    Column operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &lhs, Column &rhs, void *apply_func_ptr) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        BufferView<T> lhs_view = lhs.view<T>();
+        BufferView<T> rhs_view = rhs.view<T>();
+        BufferBase result = device.create_buffer<BaseType>(rhs.size() * sizeof(T) / sizeof(BaseType));
+
+        #ifdef NO_MEMORY_CACHE
+            auto apply_func = *reinterpret_cast<Callable<T(T, T)>*>(apply_func_ptr);
+            auto shader = device.compile<1>([&](BufferVar<T> dst, BufferVar<T> src1, BufferVar<T> src2){
+                auto x = dispatch_x();
+                dst.write(x, apply_func(src1.read(x), src2.read(x)));
+            });
+            stream << shader(result.view().as<T>(), lhs_view, rhs_view).dispatch(rhs.size());
+        #else
+            ShaderCollector<T>::get_instance(device)->create_apply_two_shader(device, apply_func_ptr);
+            stream << ShaderCollector<T>::get_instance(device)->apply_two_shader_cache[apply_func_ptr](result.view().as<T>(), lhs_view, rhs_view).dispatch(rhs.size());
+        #endif
+        return Column{std::move(result), rhs.dtype()};
+    }
+};
+
 struct apply_on_column_T {
     template <class T>
     Column operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &col, void *apply_func_ptr) {

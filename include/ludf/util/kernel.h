@@ -76,6 +76,11 @@ private:
             auto x = dispatch_x();
             dst.write(x, src.read(x));
         });
+        merge_shader = device.compile<1>([](BufferVar<uint> dst, BufferVar<uint> src) {
+            auto x = dispatch_x();
+            auto origin_data = dst.read(x);
+            dst.write(x, src.read(x) | origin_data);
+        });
         filter_reindex_shader = device.compile<1>([](BufferVar<T> dst, BufferVar<T> src, Var<Bitmap> null_mask, BufferVar<uint> idx){
             // dst[idx[x]] = src[x];
             // src:   [x]
@@ -550,6 +555,7 @@ public:
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, T> set_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, T> filter_set_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>> copy_shader;
+    luisa::compute::Shader1D<luisa::compute::Buffer<uint>, luisa::compute::Buffer<uint>> merge_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, Bitmap, BufferIndex> filter_reindex_shader;
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, BufferIndex> inverse_reindex_shader;
     luisa::compute::Shader1D<Bitmap, Bitmap, BufferIndex> inverse_reindex_bitmap_shader;
@@ -595,6 +601,7 @@ public:
     luisa::compute::Shader1D<luisa::compute::Buffer<T>, Bitmap, Hashmap<T>, BufferIndex, BufferIndex, BufferIndex> join_hashmap_filter_shader;
 
     luisa::unordered_map<void*, luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>>> apply_shader_cache;
+    luisa::unordered_map<void*, luisa::compute::Shader1D<luisa::compute::Buffer<T>, luisa::compute::Buffer<T>, luisa::compute::Buffer<T>>> apply_two_shader_cache;
 
     static ShaderCollector *get_instance(luisa::compute::Device &device) {
         if (instance == nullptr) {
@@ -619,6 +626,23 @@ public:
             device.compile<1>([&](BufferVar<T> dst, BufferVar<T> src){
                 auto x = dispatch_x();
                 dst.write(x, apply_func(src.read(x)));
+            })
+        });
+    }
+
+    void create_apply_two_shader(luisa::compute::Device &device, void *apply_func_ptr) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        if (apply_two_shader_cache.find(apply_func_ptr) != apply_two_shader_cache.end()) return;
+
+        auto apply_func = *reinterpret_cast<Callable<T(T, T)>*>(apply_func_ptr);
+
+        apply_two_shader_cache.insert({
+            apply_func_ptr,
+            device.compile<1>([&](BufferVar<T> dst, BufferVar<T> src1, BufferVar<T> src2){
+                auto x = dispatch_x();
+                dst.write(x, apply_func(src1.read(x), src2.read(x)));
             })
         });
     }

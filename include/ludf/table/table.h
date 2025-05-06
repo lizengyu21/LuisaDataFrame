@@ -26,6 +26,28 @@ public:
 
     Table(luisa::compute::Device &device, luisa::compute::Stream &stream) : _device(device), _stream(stream) {}
 
+    size_t erase(const luisa::string &name) {
+        return _columns.erase(name);
+    }
+
+    void set_col_null_mask(const luisa::string &name, luisa::vector<uint> indices) {
+        using namespace luisa;
+        using namespace luisa::compute;
+        if (_columns.find(name) == _columns.end()) return;
+        if (indices.size() == 0) return;
+        auto &col = _columns[name];
+        if (col._null_mask._data.size() == 0) {
+            col._null_mask.init_zero(_device, _stream, col.size(), ShaderCollector<uint>::get_instance(_device)->set_shader);
+        }
+        auto indices_buf = _device.create_buffer<uint>(indices.size());
+        _stream << indices_buf.copy_from(indices.data());
+        Kernel1D set_null_kernel = [](Var<Bitmap> nullmask, BufferUInt indices){
+            nullmask->set(indices.read(dispatch_x()));
+        };
+        auto set_null_shader = _device.compile(set_null_kernel);
+        _stream << set_null_shader(col._null_mask, indices_buf).dispatch(indices_buf.size());
+    }
+
     void create_column(const luisa::string &name, DataType dtype) {
         if (_columns.find(name) != _columns.end()) return;
         _columns.insert({name, Column{dtype}});
@@ -689,7 +711,9 @@ public:
             LUISA_WARNING("APPLY SKIP: encouter different type -- COL_TYPE: {} <==> FUNC_TYPE: {}", type_id_string(type.id()), typeid(T).name());
             return Column{};
         }
-        return apply_on_column_T{}.operator()<T>(_device, _stream, col, reinterpret_cast<void *>(&apply_func));
+        auto result = apply_on_column_T{}.operator()<T>(_device, _stream, col, reinterpret_cast<void *>(&apply_func));
+        result._null_mask = col._null_mask.copy(_device, _stream);
+        return std::move(result);
     }
 
     template <class T>
@@ -702,10 +726,53 @@ public:
             LUISA_WARNING("APPLY SKIP: encouter different length -- LEFT_SIZE: {} <==> RIGHT_SIZE: {}", lhs.size(), rhs.size());
             return Column{};
         }
+        Column result = apply_on_two_column_T{}.operator()<T>(_device, _stream, lhs, rhs, reinterpret_cast<void *>(&apply_func));
+        if (lhs._null_mask._data.size() != 0 && rhs._null_mask._data.size() != 0) {
+            result._null_mask = lhs._null_mask.copy(_device, _stream);
+            _stream << ShaderCollector<uint>::get_instance(_device)->merge_shader(result._null_mask._data, rhs._null_mask._data).dispatch(rhs._null_mask._data.size());
+        } else if (lhs._null_mask._data.size() != 0) {
+            result._null_mask = lhs._null_mask.copy(_device, _stream);
+        } else if (rhs._null_mask._data.size() != 0) {
+            result._null_mask = rhs._null_mask.copy(_device, _stream);
+        }
 
-        return Column{};
+        return std::move(result);
     }
 
+    template <class T>
+    Column apply(const luisa::string &lhs_name, Column &rhs, luisa::compute::Callable<T(T, T)> &apply_func) {
+        if (_columns.find(lhs_name) == _columns.end()) {
+            LUISA_WARNING("APPLY SKIP: encouter unexisted col: {}", lhs_name);
+            return Column{};
+        }
+        Column &lhs = _columns[lhs_name];
+        return apply(lhs, rhs, apply_func);
+    }
+
+    template <class T>
+    Column apply(Column &lhs, const luisa::string &rhs_name, luisa::compute::Callable<T(T, T)> &apply_func) {
+        if (_columns.find(rhs_name) == _columns.end()) {
+            LUISA_WARNING("APPLY SKIP: encouter unexisted col: {}", rhs_name);
+            return Column{};
+        }
+        Column &rhs = _columns[rhs_name];
+        return apply(lhs, rhs, apply_func);
+    }
+
+    template <class T>
+    Column apply(const luisa::string &lhs_name, const luisa::string &rhs_name, luisa::compute::Callable<T(T, T)> &apply_func) {
+        if (_columns.find(rhs_name) == _columns.end()) {
+            LUISA_WARNING("APPLY SKIP: encouter unexisted col: {}", rhs_name);
+            return Column{};
+        }
+        if (_columns.find(lhs_name) == _columns.end()) {
+            LUISA_WARNING("APPLY SKIP: encouter unexisted col: {}", lhs_name);
+            return Column{};
+        }
+        Column &lhs = _columns[lhs_name];
+        Column &rhs = _columns[rhs_name];
+        return apply(lhs, rhs, apply_func);
+    }
 
     template <class Ret, class T, std::enable_if_t<!std::is_same_v<Ret, T>, int> = 0>
     Table *_apply(const luisa::string &name, luisa::compute::Callable<Ret(T)> &apply_func, TypeId ret_type_id = TypeId::EMPTY) {
@@ -929,9 +996,9 @@ public:
         return std::move(result_table);
     }
 
-    void print_table() {
+    void print_table(size_t max_rows = 40) {
         printer.load(_device, _stream, _columns);
-        printer.print(40);
+        printer.print(max_rows);
     }
 
     void print_table_length() {
