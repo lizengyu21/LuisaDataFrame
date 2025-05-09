@@ -30,5 +30,5 @@ function(luisa_dataframe_add_executable name)
 endfunction ()
 
 add_subdirectory(tests)
-# add_subdirectory(benchmark)
+add_subdirectory(benchmark)
 

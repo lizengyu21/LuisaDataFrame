@@ -456,6 +456,17 @@ public:
         return std::move(result);
     }
 
+    Table where(const luisa::string &name, Column &col, const FilterOp op, std::any threshold) {
+        const auto &type = col.dtype();
+        auto reindex = type_dispatcher(type, make_inverse_reindex{}, _device, _stream, col, op, threshold);
+        Table result{_device, _stream};
+        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+            result.create_column(it->first, type_dispatcher(it->second.dtype(), inverse_reindex{}, _device, _stream, it->second, reindex));
+        }
+        result.create_column(name, type_dispatcher(col.dtype(), inverse_reindex{}, _device, _stream, col, reindex));
+        return std::move(result);
+    }
+
 
 
     Table *_group_by(const luisa::string &name, const luisa::vector<AggeragateOp> &agg_op_vec = {}) {
