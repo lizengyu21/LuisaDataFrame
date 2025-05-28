@@ -467,6 +467,23 @@ public:
         return std::move(result);
     }
 
+    Table *dropna(const luisa::string &name) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        if (_columns.find(name) == _columns.end()) return this;
+
+        Column &col = _columns[name];
+        if (col.size() == 0) return this;
+        if (col._null_mask._data.size() == 0) return this;
+
+        auto indices = type_dispatcher(col.dtype(), make_inverse_reindex{}, _device, _stream, col, FilterOp::NOT_NULL);
+        for (auto it = _columns.begin(); it != _columns.end(); ++it) {
+            type_dispatcher(it->second.dtype(), _inverse_reindex{}, _device, _stream, it->second, indices);
+        }
+        return this;
+    }
+
 
 
     Table *_group_by(const luisa::string &name, const luisa::vector<AggeragateOp> &agg_op_vec = {}) {

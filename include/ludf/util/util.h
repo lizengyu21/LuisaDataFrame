@@ -217,6 +217,31 @@ struct make_inverse_reindex {
         // print_buffer(stream, res.view());
         return std::move(res);
     }
+
+    template <class T>
+    BufferIndex operator()(luisa::compute::Device &device, luisa::compute::Stream &stream, Column &data, const FilterOp op) { 
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        BufferIndex indices = device.create_buffer<uint>(data.size());
+        BufferIndex counter = device.create_buffer<uint>(1);
+        stream << ShaderCollector<id_to_type<TypeId::UINT32>>::get_instance(device)->reset_shader(counter).dispatch(1);
+        T thres{};
+
+        if (data._null_mask._data.size() == 0) data._null_mask.init_zero(device, stream, data.size(), ShaderCollector<uint>::get_instance(device)->set_shader);
+
+        stream << ShaderCollector<T>::get_instance(device)->make_inverse_reindex_shader_map[op](indices, counter, data.view<T>(), data._null_mask, thres).dispatch(data.size());
+        uint count;
+        stream << counter.copy_to(&count) << synchronize();
+        if (count == 0) {
+            return BufferIndex();
+        }
+        BufferIndex res = device.create_buffer<uint>(count);
+        stream << ShaderCollector<uint>::get_instance(device)->copy_shader(res, indices).dispatch(count);
+        // print_buffer(stream, res.view());
+        return std::move(res);
+    }
+
 };
 
 struct sort_column {

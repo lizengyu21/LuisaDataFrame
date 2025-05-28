@@ -53,6 +53,36 @@ private:
         make_inverse_reindex_shader_map[op] = std::move(shader);
     }
 
+    void create_dropna_reindex_shader(luisa::compute::Device &device) {
+        using namespace luisa;
+        using namespace luisa::compute;
+
+        if (make_inverse_reindex_shader_map.find(FilterOp::NOT_NULL) != make_inverse_reindex_shader_map.end()) return;
+
+        auto shader = device.compile<1>([&](BufferUInt indices, BufferUInt counter, BufferVar<T> data, Var<Bitmap> null_mask, Var<T> threshold){
+            auto x = dispatch_x(); 
+            auto pred = !null_mask->test(x);
+            Shared<uint> index{1}; 
+            $if (thread_x() == 0u) { index.write(0u, 0u); }; 
+            sync_block(); 
+            auto local_index = def(0u); 
+            $if (pred) { local_index = index.atomic(0).fetch_add(1u); }; 
+            sync_block(); 
+            $if (thread_x() == 0u) { 
+                auto local_count = index.read(0u); 
+                auto global_offset = counter->atomic(0u).fetch_add(local_count); 
+                index.write(0u, global_offset); 
+            }; 
+            sync_block(); 
+            $if (pred) { 
+                auto global_index = index.read(0u) + local_index; 
+                indices->write(global_index, x); 
+            }; 
+        });
+
+        make_inverse_reindex_shader_map[FilterOp::NOT_NULL] = std::move(shader);
+    }
+
     ShaderCollector(luisa::compute::Device &device) {
         using namespace luisa;
         using namespace luisa::compute;
@@ -463,6 +493,9 @@ private:
         CREATE_REINEDX_SHADER(NOT_EQUAL, !=);
 
         #undef CREATE_REINEDX_SHADER
+
+        create_dropna_reindex_shader(device);
+
 
         #define CREATE_AGG_SHADER(TYPE, type) \
             if (aggregate_shader_map.find(TYPE) == aggregate_shader_map.end()) \

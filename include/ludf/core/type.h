@@ -42,6 +42,7 @@ enum class FilterOp {
     GREATER_EQUAL,
     EQUAL,
     NOT_EQUAL,
+    NOT_NULL,
 };
 
 enum class SortOrder {
